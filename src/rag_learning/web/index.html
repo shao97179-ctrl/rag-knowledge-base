@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>星云知识库 Copilot</title>
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --panel: #ffffff;
+    --ink: #172033;
+    --muted: #6b7789;
+    --line: #e3e8f1;
+    --brand: #2563eb;
+    --brand-soft: #e8f0ff;
+    --green: #0f9d58;
+    --green-soft: #e7f7ee;
+    --amber: #b45309;
+    --amber-soft: #fdf3e3;
+    --red: #dc2626;
+    --red-soft: #fdecec;
+    --shadow: 0 10px 30px rgba(23, 32, 51, 0.08);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+    font-size: 14px;
+  }
+  button, select, textarea { font: inherit; }
+  .app {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    height: 100vh;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 22px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    z-index: 2;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 34px; height: 34px; border-radius: 10px;
+    background: linear-gradient(135deg, #2563eb, #7c3aed);
+    color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 15px;
+    box-shadow: 0 6px 14px rgba(37, 99, 235, 0.35);
+  }
+  .brand h1 { font-size: 16px; margin: 0; letter-spacing: 0.2px; }
+  .brand p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+  .spacer { flex: 1; }
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge {
+    padding: 5px 10px; border-radius: 999px; font-size: 12px;
+    background: #f1f4f9; color: var(--muted); border: 1px solid var(--line);
+  }
+  .badge.online { background: var(--green-soft); color: var(--green); border-color: #c8ecd8; }
+  .badge.offline { background: var(--amber-soft); color: var(--amber); border-color: #f3ddb5; }
+  .layout {
+    display: grid;
+    grid-template-columns: 270px minmax(0, 1fr) 360px;
+    gap: 16px;
+    padding: 16px 22px 22px;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    min-height: 0;
+  }
+  .sidebar, .debug {
+    padding: 16px;
+    overflow-y: auto;
+  }
+  .section { margin-bottom: 20px; }
+  .section h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px;
+    color: var(--muted); margin: 0 0 10px;
+  }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .field select {
+    width: 100%; padding: 9px 10px; border-radius: 9px;
+    border: 1px solid var(--line); background: #fbfcfe; color: var(--ink);
+    outline: none;
+  }
+  .field select:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+  .hint { font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .example {
+    display: block; width: 100%; text-align: left;
+    margin-bottom: 8px; padding: 9px 10px; border-radius: 10px;
+    border: 1px solid var(--line); background: #fbfcfe; color: var(--ink);
+    cursor: pointer; transition: all 0.15s ease;
+  }
+  .example:hover { border-color: var(--brand); background: var(--brand-soft); }
+  .example small { display: block; color: var(--muted); margin-top: 2px; font-size: 11px; }
+  .doc-item { padding: 9px 0; border-bottom: 1px dashed var(--line); }
+  .doc-item:last-child { border-bottom: 0; }
+  .doc-path { font-size: 12px; word-break: break-all; }
+  .doc-meta { display: flex; gap: 6px; align-items: center; margin-top: 5px; flex-wrap: wrap; }
+  .chip {
+    display: inline-block; padding: 2px 7px; border-radius: 999px;
+    font-size: 10px; border: 1px solid var(--line); color: var(--muted); background: #f7f9fc;
+  }
+  .chip.public { color: var(--green); background: var(--green-soft); border-color: #c8ecd8; }
+  .chip.internal { color: var(--amber); background: var(--amber-soft); border-color: #f3ddb5; }
+  .chip.confidential { color: var(--red); background: var(--red-soft); border-color: #f6c9c9; }
+  .chip.dept { color: var(--brand); background: var(--brand-soft); border-color: #cddcff; }
+
+  .chat { display: flex; flex-direction: column; overflow: hidden; }
+  .messages { flex: 1; overflow-y: auto; padding: 22px 24px; }
+  .empty {
+    height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;
+    color: var(--muted); text-align: center; gap: 8px;
+  }
+  .empty h2 { color: var(--ink); margin: 0; font-size: 20px; }
+  .empty p { margin: 0; max-width: 440px; line-height: 1.6; }
+  .msg { display: flex; gap: 10px; margin-bottom: 18px; }
+  .msg.user { flex-direction: row-reverse; }
+  .avatar {
+    width: 30px; height: 30px; border-radius: 9px; flex: 0 0 30px;
+    display: grid; place-items: center; font-size: 12px; font-weight: 700;
+    background: #eef2f9; color: var(--muted);
+  }
+  .msg.user .avatar { background: var(--brand); color: #fff; }
+  .bubble-wrap { max-width: min(760px, 86%); }
+  .bubble {
+    padding: 12px 14px; border-radius: 14px; line-height: 1.7;
+    background: #f6f8fc; border: 1px solid var(--line);
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .msg.user .bubble { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .bubble.error { background: var(--red-soft); border-color: #f6c9c9; color: var(--red); }
+  .bubble-meta { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+  .citations { margin-top: 10px; display: grid; gap: 8px; }
+  .citation {
+    border: 1px solid var(--line); border-radius: 11px; padding: 10px 12px;
+    background: #fff; font-size: 12px;
+  }
+  .citation-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .citation-index {
+    width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center;
+    background: var(--brand-soft); color: var(--brand); font-weight: 700; font-size: 11px;
+  }
+  .citation-title { font-weight: 600; }
+  .citation-path { color: var(--muted); margin-top: 4px; word-break: break-all; }
+  .citation-snippet { color: #455063; margin-top: 6px; line-height: 1.55; }
+  .composer {
+    border-top: 1px solid var(--line); padding: 14px 18px;
+    display: flex; gap: 10px; align-items: flex-end; background: #fff;
+    border-radius: 0 0 16px 16px;
+  }
+  .composer textarea {
+    flex: 1; resize: none; max-height: 120px; min-height: 42px;
+    padding: 11px 13px; border-radius: 11px; border: 1px solid var(--line);
+    background: #fbfcfe; outline: none; line-height: 1.5;
+  }
+  .composer textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+  .send {
+    padding: 11px 18px; border: 0; border-radius: 11px; cursor: pointer;
+    background: var(--brand); color: #fff; font-weight: 600;
+    box-shadow: 0 6px 14px rgba(37, 99, 235, 0.28);
+  }
+  .send:disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
+
+  .debug h2 { font-size: 14px; margin: 0 0 4px; }
+  .debug-sub { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+  .debug-block { margin-bottom: 16px; }
+  .debug-block h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px;
+    color: var(--muted); margin: 0 0 7px;
+  }
+  .code {
+    display: block; padding: 8px 10px; border-radius: 8px; background: #f5f7fb;
+    border: 1px solid var(--line); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; line-height: 1.55; word-break: break-all; color: #334155;
+  }
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .stat { background: #f8fafd; border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; }
+  .stat strong { display: block; font-size: 17px; }
+  .stat span { color: var(--muted); font-size: 11px; }
+  .hit { padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 11px; }
+  .hit:last-child { border-bottom: 0; }
+  .hit-top { display: flex; justify-content: space-between; gap: 8px; }
+  .hit-path { word-break: break-all; }
+  .hit-score { color: var(--brand); font-family: ui-monospace, monospace; }
+  .hit-meta { color: var(--muted); margin-top: 3px; }
+  .loading { display: inline-flex; gap: 4px; align-items: center; color: var(--muted); }
+  .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); animation: blink 1s infinite; }
+  .dot:nth-child(2) { animation-delay: 0.15s; }
+  .dot:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+
+  @media (max-width: 1180px) {
+    .layout { grid-template-columns: 240px minmax(0, 1fr); }
+    .debug { display: none; }
+  }
+  @media (max-width: 820px) {
+    .layout { grid-template-columns: 1fr; padding: 12px; }
+    .sidebar { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="logo">R</div>
+      <div>
+        <h1>星云知识库 Copilot</h1>
+        <p>BGE-M3 混合检索 · 父子块 · 权限隔离 · 可量化评估</p>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="badges">
+      <span id="llm-badge" class="badge">连接中…</span>
+      <span id="index-badge" class="badge">索引加载中…</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="panel sidebar">
+      <div class="section">
+        <h2>当前身份</h2>
+        <div class="field">
+          <label for="department">部门</label>
+          <select id="department"></select>
+        </div>
+        <div class="field">
+          <label for="clearance">密级</label>
+          <select id="clearance"></select>
+        </div>
+        <p class="hint">身份可以自由切换，用来演示检索层 ACL 过滤；真实系统应由 SSO/JWT 提供，而不是前端选择。</p>
+      </div>
+
+      <div class="section">
+        <h2>示例问题</h2>
+        <div id="examples"></div>
+      </div>
+
+      <div class="section">
+        <h2>已入库文档</h2>
+        <div id="documents" class="hint">加载中…</div>
+      </div>
+    </aside>
+
+    <section class="panel chat">
+      <div id="messages" class="messages">
+        <div class="empty">
+          <h2>问一个企业知识库问题</h2>
+          <p>系统会从文档中检索相关片段，用 [1][2] 标注来源；资料不足时会明确拒答。右侧面板会展示 dense / sparse 两路召回和 RRF 融合过程。</p>
+        </div>
+      </div>
+      <form id="composer" class="composer">
+        <textarea id="input" rows="1" placeholder="例如：连接池耗尽了怎么处理？"></textarea>
+        <button id="send" class="send" type="submit">发送</button>
+      </form>
+    </section>
+
+    <aside class="panel debug">
+      <h2>检索调试</h2>
+      <div class="debug-sub">发送问题后展示双路召回、RRF 融合和 ACL 过滤表达式。</div>
+      <div id="debug-body" class="hint">暂无数据。</div>
+    </aside>
+  </div>
+</div>
+
+<script>
+  const $ = (selector) => document.querySelector(selector);
+  const state = {
+    sessionId: "web-" + Math.random().toString(36).slice(2, 10),
+    busy: false,
+    meta: null,
+  };
+
+  const EXAMPLES = [
+    { q: "连接池耗尽了怎么处理？", dept: "ops", clearance: "internal", label: "连接池排查" },
+    { q: "P0 故障的响应时限是多少？", dept: "ops", clearance: "public", label: "P0 响应时限" },
+    { q: "报销发票有什么要求？", dept: "finance", clearance: "internal", label: "报销发票" },
+    { q: "P7 职级的薪酬带宽是多少？", dept: "ops", clearance: "internal", label: "权限演示：薪酬" },
+    { q: "公司股票代码是多少？", dept: "general", clearance: "public", label: "拒答演示" },
+  ];
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function chip(text, kind) {
+    return el("span", "chip " + (kind || ""), text);
+  }
+
+  async function api(path, options = {}) {
+    const response = await fetch(path, {
+      headers: { "Content-Type": "application/json" },
+      ...options,
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch (err) { payload = null; }
+    if (!response.ok) {
+      const detail = payload && payload.detail ? payload.detail : response.statusText;
+      throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    }
+    return payload;
+  }
+
+  async function loadMeta() {
+    const meta = await api("/api/v1/meta");
+    state.meta = meta;
+
+    const department = $("#department");
+    const clearance = $("#clearance");
+    department.innerHTML = "";
+    clearance.innerHTML = "";
+    meta.departments.forEach((value) => department.appendChild(new Option(value, value)));
+    meta.sensitivities.forEach((value) => clearance.appendChild(new Option(value, value)));
+    department.value = "ops";
+    clearance.value = "internal";
+
+    const llmBadge = $("#llm-badge");
+    if (meta.llm.available) {
+      llmBadge.textContent = "LLM 在线 · " + meta.llm.provider + "/" + meta.llm.model;
+      llmBadge.className = "badge online";
+    } else {
+      llmBadge.textContent = "离线模式 · 抽取式回答";
+      llmBadge.className = "badge offline";
+    }
+    const indexBadge = $("#index-badge");
+    indexBadge.textContent = meta.documents + " 篇文档 · " + meta.milvus.rows + " 个块";
+  }
+
+  async function loadDocuments() {
+    const container = $("#documents");
+    try {
+      const payload = await api("/api/v1/documents");
+      container.innerHTML = "";
+      if (!payload.documents.length) {
+        container.textContent = "还没有入库文档，先运行 rag-learning ingest。";
+        return;
+      }
+      payload.documents.forEach((doc) => {
+        const item = el("div", "doc-item");
+        item.appendChild(el("div", "doc-path", doc.rel_path));
+        const meta = el("div", "doc-meta");
+        meta.appendChild(chip(doc.department, "dept"));
+        meta.appendChild(chip(doc.sensitivity, doc.sensitivity));
+        meta.appendChild(chip(doc.chunk_count + " 块"));
+        item.appendChild(meta);
+        container.appendChild(item);
+      });
+    } catch (error) {
+      container.textContent = "文档列表加载失败：" + error.message;
+    }
+  }
+
+  function renderExamples() {
+    const container = $("#examples");
+    container.innerHTML = "";
+    EXAMPLES.forEach((example) => {
+      const button = el("button", "example");
+      button.type = "button";
+      button.appendChild(document.createTextNode(example.label));
+      button.appendChild(el("small", "", example.q));
+      button.addEventListener("click", () => {
+        $("#department").value = example.dept;
+        $("#clearance").value = example.clearance;
+        $("#input").value = example.q;
+        sendQuestion(example.q);
+      });
+      container.appendChild(button);
+    });
+  }
+
+  function clearEmptyState() {
+    const empty = document.querySelector(".empty");
+    if (empty) empty.remove();
+  }
+
+  function addMessage(role, text, isError) {
+    clearEmptyState();
+    const wrapper = el("div", "msg " + role);
+    wrapper.appendChild(el("div", "avatar", role === "user" ? "我" : "AI"));
+    const bubbleWrap = el("div", "bubble-wrap");
+    const bubble = el("div", "bubble" + (isError ? " error" : ""), text);
+    bubbleWrap.appendChild(bubble);
+    wrapper.appendChild(bubbleWrap);
+    $("#messages").appendChild(wrapper);
+    $("#messages").scrollTop = $("#messages").scrollHeight;
+    return { wrapper, bubbleWrap };
+  }
+
+  function addLoading() {
+    clearEmptyState();
+    const wrapper = el("div", "msg assistant");
+    wrapper.appendChild(el("div", "avatar", "AI"));
+    const bubbleWrap = el("div", "bubble-wrap");
+    const bubble = el("div", "bubble");
+    const loading = el("span", "loading");
+    loading.appendChild(el("span", "dot"));
+    loading.appendChild(el("span", "dot"));
+    loading.appendChild(el("span", "dot"));
+    loading.appendChild(document.createTextNode(" 正在检索与生成"));
+    bubble.appendChild(loading);
+    bubbleWrap.appendChild(bubble);
+    wrapper.appendChild(bubbleWrap);
+    $("#messages").appendChild(wrapper);
+    $("#messages").scrollTop = $("#messages").scrollHeight;
+    return wrapper;
+  }
+
+  function renderAssistant(data) {
+    const { bubbleWrap, wrapper } = addMessage("assistant", data.answer);
+    const meta = el("div", "bubble-meta");
+    if (data.offline) meta.appendChild(chip("离线/降级模式"));
+    if (data.refused) meta.appendChild(chip("已拒答"));
+    if (data.rewritten_query && data.rewritten_query !== data.debug?.retrieval?.query) {
+      meta.appendChild(chip("改写：" + data.rewritten_query));
+    }
+    if (meta.childNodes.length) bubbleWrap.insertBefore(meta, bubbleWrap.firstChild);
+
+    if (data.citations && data.citations.length) {
+      const citations = el("div", "citations");
+      data.citations.forEach((citation) => {
+        const card = el("div", "citation");
+        const head = el("div", "citation-head");
+        head.appendChild(el("span", "citation-index", String(citation.index)));
+        head.appendChild(el("span", "citation-title", citation.title));
+        head.appendChild(chip(citation.department, "dept"));
+        head.appendChild(chip(citation.sensitivity, citation.sensitivity));
+        card.appendChild(head);
+        card.appendChild(el("div", "citation-path", citation.source_path));
+        if (citation.heading) {
+          card.appendChild(el("div", "citation-path", "章节：" + citation.heading));
+        }
+        card.appendChild(el("div", "citation-snippet", citation.snippet));
+        citations.appendChild(card);
+      });
+      bubbleWrap.appendChild(citations);
+    }
+    $("#messages").scrollTop = $("#messages").scrollHeight;
+  }
+
+  function renderHitList(container, hits, scoreKey) {
+    if (!hits || !hits.length) {
+      container.appendChild(el("div", "hint", "无命中"));
+      return;
+    }
+    hits.forEach((hit, index) => {
+      const row = el("div", "hit");
+      const top = el("div", "hit-top");
+      top.appendChild(el("span", "hit-path", (index + 1) + ". " + hit.source_path));
+      const score = hit[scoreKey];
+      top.appendChild(el("span", "hit-score", score === undefined ? "-" : Number(score).toFixed(4)));
+      row.appendChild(top);
+      row.appendChild(el("div", "hit-meta", hit.department + "/" + hit.sensitivity + " · " + (hit.heading || "无章节")));
+      container.appendChild(row);
+    });
+  }
+
+  function renderDebug(debug, data) {
+    const body = $("#debug-body");
+    body.innerHTML = "";
+    const retrieval = debug && debug.retrieval ? debug.retrieval : null;
+    if (!retrieval) {
+      body.textContent = "暂无数据。";
+      return;
+    }
+
+    if (data.rewritten_query && data.rewritten_query !== retrieval.query) {
+      const block = el("div", "debug-block");
+      block.appendChild(el("h3", "", "改写后的问题"));
+      block.appendChild(el("span", "code", data.rewritten_query));
+      body.appendChild(block);
+    }
+
+    const filterBlock = el("div", "debug-block");
+    filterBlock.appendChild(el("h3", "", "ACL 过滤表达式"));
+    filterBlock.appendChild(el("span", "code", retrieval.filter_expr || "-"));
+    body.appendChild(filterBlock);
+
+    const stats = el("div", "debug-block");
+    stats.appendChild(el("h3", "", "召回与融合"));
+    const grid = el("div", "stats");
+    [
+      ["Dense", retrieval.dense_count],
+      ["Sparse", retrieval.sparse_count],
+      ["RRF", retrieval.fused_count],
+      ["父块", retrieval.parent_count],
+    ].forEach(([label, value]) => {
+      const cell = el("div", "stat");
+      cell.appendChild(el("strong", "", String(value ?? "-")));
+      cell.appendChild(el("span", "", label));
+      grid.appendChild(cell);
+    });
+    stats.appendChild(grid);
+    body.appendChild(stats);
+
+    const denseBlock = el("div", "debug-block");
+    denseBlock.appendChild(el("h3", "", "Dense 命中（语义）"));
+    renderHitList(denseBlock, retrieval.dense_hits, "score");
+    body.appendChild(denseBlock);
+
+    const sparseBlock = el("div", "debug-block");
+    sparseBlock.appendChild(el("h3", "", "Sparse 命中（关键词）"));
+    renderHitList(sparseBlock, retrieval.sparse_hits, "score");
+    body.appendChild(sparseBlock);
+
+    const fusedBlock = el("div", "debug-block");
+    fusedBlock.appendChild(el("h3", "", "RRF 融合结果"));
+    if (retrieval.fused && retrieval.fused.length) {
+      retrieval.fused.forEach((item, index) => {
+        const row = el("div", "hit");
+        const top = el("div", "hit-top");
+        top.appendChild(el("span", "hit-path", (index + 1) + ". " + item.source_path));
+        top.appendChild(el("span", "hit-score", Number(item.rrf).toFixed(5)));
+        row.appendChild(top);
+        fusedBlock.appendChild(row);
+      });
+    } else {
+      fusedBlock.appendChild(el("div", "hint", "无融合结果"));
+    }
+    body.appendChild(fusedBlock);
+  }
+
+  async function sendQuestion(text) {
+    const query = (text || "").trim();
+    if (!query || state.busy) return;
+    state.busy = true;
+    $("#send").disabled = true;
+    $("#input").value = "";
+    $("#input").style.height = "auto";
+    addMessage("user", query);
+    const loading = addLoading();
+
+    try {
+      const data = await api("/api/v1/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          query,
+          department: $("#department").value,
+          clearance: $("#clearance").value,
+          session_id: state.sessionId,
+          debug: true,
+        }),
+      });
+      loading.remove();
+      renderAssistant(data);
+      renderDebug(data.debug, data);
+    } catch (error) {
+      loading.remove();
+      addMessage("assistant", "请求失败：" + error.message, true);
+    } finally {
+      state.busy = false;
+      $("#send").disabled = false;
+      $("#input").focus();
+    }
+  }
+
+  $("#composer").addEventListener("submit", (event) => {
+    event.preventDefault();
+    sendQuestion($("#input").value);
+  });
+
+  $("#input").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      sendQuestion($("#input").value);
+    }
+  });
+
+  $("#input").addEventListener("input", () => {
+    const input = $("#input");
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 120) + "px";
+  });
+
+  renderExamples();
+  loadMeta().catch((error) => {
+    $("#llm-badge").textContent = "后端连接失败：" + error.message;
+    $("#llm-badge").className = "badge offline";
+  });
+  loadDocuments();
+</script>
+</body>
+</html>

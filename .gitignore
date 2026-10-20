@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+data/*.db
+data/*.db.lock
+data/*.sqlite
+data/*.sqlite-*
+eval/reports/
+*.log
+.idea/
+.vscode/
+.DS_Store
+
+# 本地笔记
+bug.md

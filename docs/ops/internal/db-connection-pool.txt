@@ -1,0 +1,32 @@
+# 数据库连接池耗尽排查手册
+
+## 现象
+
+应用日志持续出现 timeout acquiring connection from pool、HikariPool-1 - Connection is not available 等错误；接口 P99 延迟升高，部分请求直接返回 500。数据库监控显示活跃连接数接近 max_connections。
+
+## 一分钟判断
+
+1. 执行 SELECT state, count(*) FROM pg_stat_activity GROUP BY state; 观察 active、idle、idle in transaction 的数量。
+2. 查看应用侧连接池指标：active、idle、waiting、maximumPoolSize。
+3. 对比数据库 max_connections、pgbouncer default_pool_size 与所有实例的连接池上限之和。
+4. 检查最近 30 分钟是否有发布、扩容、慢查询或流量突增。
+
+## 应急处理
+
+1. 先在告警群同步现象和影响范围，避免多人重复操作。
+2. 如果是单个实例连接泄漏，先摘除该实例流量，再滚动重启。
+3. 对长期 idle in transaction 的连接，确认业务影响后谨慎终止；不要一次性杀掉全部连接。
+4. 如果是突发流量，临时调大 pgbouncer 的 default_pool_size，并设置合理的 query_wait_timeout。
+5. 如果伴随慢查询，先 kill 掉执行超过 60 秒的查询，再保留现场。
+
+## 根因排查
+
+- 连接泄漏：检查代码中 Connection、Statement、ResultSet 是否在 finally 中关闭；重点看新上线的定时任务和异步线程。
+- 慢查询：用 pg_stat_statements 按 total_exec_time 排序，确认是否有缺失索引或全表扫描。
+- 连接池配置：所有应用实例的 maximumPoolSize 之和不应超过数据库 max_connections 的 80%，要给运维和监控留余量。
+- 事务过长：检查是否有事务中包含 HTTP 调用、文件上传等耗时操作。
+- 突发流量：结合网关 QPS 和线程池指标判断，必要时限流。
+
+## 修复与复盘
+
+修复后持续观察 30 分钟连接曲线，确认 waiting 归零。P1 及以上故障需要输出复盘，补充连接池容量基线、告警阈值和演练计划。

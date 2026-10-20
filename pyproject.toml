@@ -1,0 +1,48 @@
+[project]
+name = "rag-learning"
+version = "0.1.0"
+description = "企业知识库 RAG：BGE-M3 混合检索 + 权限隔离 + 可量化评估"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "langchain==1.2.12",
+    "langchain-core==1.2.18",
+    "langchain-text-splitters==1.1.1",
+    "langchain-openai==1.1.11",
+    "pymilvus==2.6.12",
+    "milvus-lite==3.2.2",
+    "torch==2.11.0",
+    "transformers==5.3.0",
+    "pypdf==6.10.2",
+    "pypdfium2==5.8.0",
+    "python-docx==1.2.0",
+    "openpyxl==3.1.5",
+    "python-pptx==1.0.2",
+    "beautifulsoup4==4.14.3",
+    "lxml==6.1.0",
+    "pandas==3.0.2",
+    "fastapi==0.135.1",
+    "uvicorn==0.46.0",
+    "pydantic==2.12.5",
+    "pydantic-settings==2.12.0",
+    "python-dotenv==1.2.1",
+    "pyyaml==6.0.3",
+    "typer==0.24.1",
+    "rich==14.3.3",
+    "httpx==0.28.1",
+    "pytest==9.0.3",
+    "reportlab==5.0.1",
+]
+
+[project.scripts]
+rag-learning = "rag_learning:main"
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]

@@ -1,0 +1,14 @@
+{"id": "q01", "type": "retrieval", "question": "连接池耗尽了怎么处理？", "department": "ops", "clearance": "internal", "expected_paths": ["ops/internal/db-connection-pool.txt"]}
+{"id": "q02", "type": "retrieval", "question": "P0 故障的响应时限是多少？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/incident-response.html"]}
+{"id": "q03", "type": "retrieval", "question": "年假可以跨年顺延吗？最多保留到什么时候？", "department": "hr", "clearance": "internal", "expected_paths": ["hr/internal/leave-policy.docx"]}
+{"id": "q04", "type": "retrieval", "question": "报销发票抬头和发票类型有什么要求？", "department": "finance", "clearance": "internal", "expected_paths": ["finance/internal/expense-reimbursement.pdf"]}
+{"id": "q05", "type": "retrieval", "question": "API 分页的 page_size 最大是多少？", "department": "rd", "clearance": "internal", "expected_paths": ["rd/internal/api-guidelines.pptx"]}
+{"id": "q06", "type": "retrieval", "question": "供应商合同到期前应该找谁续签？", "department": "general", "clearance": "internal", "expected_paths": ["general/internal/vendor-list.csv"]}
+{"id": "q07", "type": "retrieval", "question": "值班交接需要记录哪些内容？", "department": "ops", "clearance": "internal", "expected_paths": ["ops/internal/oncall-runbook.md"]}
+{"id": "q08", "type": "retrieval", "question": "公司对账号密码和机密资料有哪些信息安全要求？", "department": "general", "clearance": "public", "expected_paths": ["general/public/company-handbook.md"]}
+{"id": "acl01", "type": "acl", "question": "P7 职级的薪酬带宽和股权授予是多少？", "department": "ops", "clearance": "internal", "expected_paths": [], "forbidden_paths": ["hr/confidential/salary-band.xlsx"]}
+{"id": "acl02", "type": "acl", "question": "架构评审里的数据库迁移计划和容量评估是什么？", "department": "rd", "clearance": "public", "expected_paths": [], "forbidden_paths": ["rd/confidential/architecture-review.docx"]}
+{"id": "acl03", "type": "acl", "question": "薪酬带宽表的 P8 上限是多少？", "department": "hr", "clearance": "internal", "expected_paths": [], "forbidden_paths": ["hr/confidential/salary-band.xlsx"]}
+{"id": "acl04", "type": "acl", "question": "报销的住宿标准上限是多少？", "department": "finance", "clearance": "public", "expected_paths": [], "forbidden_paths": ["finance/internal/expense-reimbursement.pdf"]}
+{"id": "ref01", "type": "refusal", "question": "公司的股票代码是多少？", "department": "general", "clearance": "public", "expected_paths": [], "forbidden_paths": []}
+{"id": "ref02", "type": "refusal", "question": "今天食堂午饭吃什么？", "department": "general", "clearance": "public", "expected_paths": [], "forbidden_paths": []}
