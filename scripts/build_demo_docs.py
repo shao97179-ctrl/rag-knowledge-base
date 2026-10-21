@@ -1,6 +1,9 @@
-"""生成 10 篇中文演示文档，覆盖 8 种格式、多个部门与密级。
+"""【已废弃】最早的 10 篇演示文档生成脚本。
 
-运行：.venv/bin/python scripts/build_demo_docs.py
+docs/ 下的语料已替换为「中兴银行」中文语料（由 scripts/build_zh_corpus.py 生成），
+本脚本原先写入 docs/ 的英文演示文档已被移除，保留代码仅供追溯。
+
+如需重新生成演示文档，请把输出目录改到 docs 之外再运行，避免污染正式语料。
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ from pptx import Presentation
 from pptx.util import Inches
 
 ROOT = Path(__file__).resolve().parents[1]
-DOCS = ROOT / "docs"
+DOCS = ROOT / "docs_legacy_demo"  # 独立目录，绝不写入正式语料
 
 
 def write_text(rel_path: str, content: str) -> Path:

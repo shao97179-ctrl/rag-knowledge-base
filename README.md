@@ -2,20 +2,30 @@
 
 一个面向企业内部知识库的 RAG 项目，重点不是「调通一个大模型」，而是把检索质量、权限隔离和效果评估做成可解释、可验证的工程。
 
-> **这是一个学习项目，不是生产可用的知识库系统。** 语料只有 10 篇演示文档、31 个检索块、14 条评估用例，指标用于验证工程实现的正确性，不代表真实规模下的检索效果。身份由前端下拉框选择，真实系统应来自 SSO/JWT 并在服务端强制校验。
+> **这是一个学习项目，不是生产可用的知识库系统。** 语料是 69 篇中文文档、602 个检索块、50 条评估用例，指标用于验证工程实现的正确性，不代表真实规模下的检索效果。身份由前端下拉框选择，真实系统应来自 SSO/JWT 并在服务端强制校验。
 
 ![Web UI](assets/ui.png)
 
 ## 效果速览
 
-- 10 篇中文演示文档，覆盖 `.md` / `.txt` / `.html` / `.csv` / `.xlsx` / `.docx` / `.pptx` / `.pdf` 八种格式。
-- 31 个检索块，BGE-M3 稠密向量（1024 维）+ 稀疏词权重双路召回，RRF 融合。
-- 黄金测试集 14 条：8 条检索、4 条权限、2 条拒答。
-- 离线评估结果：**Recall@5 = 1.000，MRR@5 = 1.000，ACL 违规 = 0**（8 条检索 + 4 条权限用例）。
-- 提供 CLI、FastAPI、单页 Web UI；UI 可切换部门/密级，并实时展示两路召回和 RRF 过程。
-- 35 个 pytest 用例，不加载 BGE-M3、不调用 LLM，全部离线可跑。
+- **69 篇中文文档**，覆盖 `.pdf` / `.md` / `.html` / `.docx` / `.pptx` 五种格式（解析层共支持 8 种，含 `.csv` / `.xlsx` / `.txt`）。
+- **602 个检索块**，BGE-M3 稠密向量（1024 维）+ 稀疏词权重双路召回，RRF 融合。
+- **黄金测试集 50 条**：41 条检索、6 条权限、3 条拒答。
+- 离线评估结果：**Recall@5 = 1.000，MRR@5 = 0.976，ACL 违规 = 0，拒答正确 3/3**。
 
-> 说明：黄金集只有 14 条，指标用于验证工程正确性，不代表生产规模下的检索效果。
+  MRR 未达 1.0 是刻意保留的真实结果：语料里存在方向相反的镜像文档（「工资账户转储蓄账户」vs「储蓄账户转工资账户」）和同一概念的多篇近似文档，双塔向量无法完全区分。这正是后续引入 reranker 的动机，详见 [已知限制](#已知限制)。
+- 提供 CLI、FastAPI、单页 Web UI；UI 可切换部门/密级，并实时展示两路召回和 RRF 过程。
+- **37 个 pytest 用例**，不加载 BGE-M3、不调用 LLM，全部离线可跑。
+
+语料分布：
+
+| 部门 | 文档数 | 块数 | | 密级 | 文档数 | 块数 |
+| --- | ---: | ---: | --- | --- | ---: | ---: |
+| ops | 48 | 509 | | public | 48 | 506 |
+| finance | 9 | 42 | | internal | 18 | 86 |
+| general | 8 | 36 | | confidential | 3 | 10 |
+| rd | 3 | 10 | | | | |
+| hr | 1 | 5 | | | | |
 
 ## 这个项目解决了什么
 
@@ -28,13 +38,14 @@
 | 无权内容被模型看到 | 在 Milvus 检索参数里做部门 + 密级 filter，而不是取回后再过滤 |
 | 效果无法量化 | Recall@K、MRR@K、Faithfulness、ACL 违规数，ACL 违规退出码 2 |
 | 没有 Key 就无法演示 | 离线抽取式降级；检索、UI、评估的检索指标都能跑 |
+| 多格式语料难维护 | 一份中文 Markdown 母版生成 5 种格式，回读校验排版一致性 |
 
 ## 架构
 
 ### 离线入库
 
 ```text
-docs/<部门>/<密级>/*.{md,txt,html,csv,xlsx,pptx,docx,pdf}
+docs/<部门>/<密级>/*.{pdf,md,html,docx,pptx,...}
   → 按扩展名解析（表格统一转 Markdown 表格）
   → 清洗（统一换行、去零宽字符、压缩空白；查询端同一套规则）
   → 权限推断（CLI 覆盖 > frontmatter > 目录 > 默认 general/public）
@@ -61,10 +72,11 @@ query
 
 ```text
 rag-learning/
-├── docs/                        # 演示文档，按 <部门>/<密级>/ 组织
+├── docs/                        # 中文语料，按 <部门>/<密级>/ 组织（69 篇）
+├── zh_src/                      # 中文 Markdown 母版，<部门>__<密级>__<slug>.md
 ├── data/                        # milvus.db、registry.sqlite（gitignore）
 ├── eval/
-│   ├── golden_set.jsonl         # 14 条黄金测试集
+│   ├── golden_set.jsonl         # 50 条黄金测试集
 │   └── reports/                 # 每次评估的 JSON 报告（gitignore）
 ├── src/rag_learning/
 │   ├── config.py                # RAG_ 前缀配置，路径相对项目根
@@ -85,9 +97,10 @@ rag-learning/
 │   ├── probe.py                 # 模型、向量库、LLM 自检
 │   └── web/index.html           # 单页 Web UI
 ├── scripts/
-│   ├── build_demo_docs.py       # 生成 10 篇演示文档
+│   ├── build_zh_corpus.py       # 母版 -> 5 种格式 + 回读校验（当前语料由它生成）
+│   ├── build_demo_docs.py       # 最早的演示文档脚本（已废弃，输出到 docs_legacy_demo/）
 │   └── probe_m0.py              # 最初的 M0 技术验证脚本
-└── tests/                       # 35 个离线测试
+└── tests/                       # 37 个离线测试
 ```
 
 ## 快速开始
@@ -115,7 +128,7 @@ cp .env.example .env
 
 # 4. 问答
 .venv/bin/python -m rag_learning ask \
-  -q "连接池耗尽了怎么处理" \
+  -q "UPI 的单笔和每日交易限额是多少" \
   --dept ops --clearance internal --debug
 
 # 5. 交互式多轮
@@ -143,6 +156,21 @@ cp .env.example .env
 | `python -m rag_learning probe --live` | 额外真实调用一次 LLM（会产生费用） |
 | `python -m rag_learning serve` | 启动 API + UI |
 | `python -m rag_learning stats` | 查看模型、向量库、文档状态 |
+
+### 语料是怎么来的
+
+`docs/` 里的 69 篇文档由 `zh_src/` 的中文母版生成，每篇**只部署一种格式**到 `docs/`（按 pdf / md / docx / html / pptx 轮换）。原因：同一内容部署多份格式副本会被索引多次，导致检索结果重复、评估匹配到错误文档。
+
+```bash
+.venv/bin/python scripts/build_zh_corpus.py            # 从 zh_src 生成全部格式
+.venv/bin/python scripts/build_zh_corpus.py --verify   # 只回读校验，不重新生成
+```
+
+脚本会用项目自己的 `load_document` 回读每种格式，按「实质字符片段覆盖率」校验排版一致性（阈值 95%），而不是简单比字符数——否则 PDF/PPTX 丢失 `| - : * #` 等 Markdown 标记会被误判成内容丢失。
+
+> **`--verify` 的已知局限**：它假设每篇的 5 种格式都存在，因此对「每篇只部署一种格式」的 `docs/` 会报大量 `文件未生成`。这是校验模式与部署策略的不一致，不影响生成流程；如需校验，请先对同一目录完整生成 5 种格式再跑。
+
+> **注意**：格式轮换后，`eval/golden_set.jsonl` 里的扩展名会失效。重新部署语料后必须按 stem 重新解析实际扩展名，否则评估会因路径对不上而误报。
 
 ## BGE-M3 是怎么用的
 
@@ -232,15 +260,22 @@ SQLite `documents` 表记录 `doc_id / rel_path / content_hash / department / se
 - **Faithfulness**：LLM 裁判逐条判断答案是否有资料支持；系统正确拒答时直接记 1.0，避免指标假低。
 - **ACL 违规数**：最终上下文和两路召回里，任何超出用户可见范围的 chunk 都计数。
 
-当前离线结果：
+本次结果（69 篇 / 602 块 / 50 条用例）：
 
 ```text
-Recall@5 = 1.000
-MRR@5    = 1.000
-Faithfulness = N/A（未配置 Key）
-ACL 违规 = 0
-拒答正确 = N/A（需要真实 LLM）
+Recall@5     = 1.000
+MRR@5        = 0.976
+Faithfulness = N/A（--no-faithfulness 跳过）
+ACL 违规      = 0
+拒答正确      = 3/3
 ```
+
+MRR 低于 1.0 的两条用例值得单独说明，它们暴露的是**双塔检索的能力边界**，不是实现 bug：
+
+- `q16`「工资账户如何转为储蓄账户」：语料里有一对方向相反的文档（`salary-account-to-savings-account` / `savings-account-to-salary-account`），dense 向量把两者排反了。
+- `q14`「储蓄账户的零余额账户有什么条件」：`current-account-overview` 和 `savings-account-overview` 都真实提到零余额，属合理强干扰。
+
+这类细粒度语义差异正是 cross-encoder reranker 擅长的地方，也是下一步最值得做的改进。
 
 退出码：
 
@@ -272,7 +307,7 @@ ACL 违规 = 0
 curl -s http://127.0.0.1:8000/api/v1/chat \
   -H 'Content-Type: application/json' \
   -d '{
-    "query": "连接池耗尽了怎么处理？",
+    "query": "UPI 的单笔和每日交易限额是多少？",
     "department": "ops",
     "clearance": "internal",
     "session_id": "demo",
@@ -291,7 +326,7 @@ curl -s http://127.0.0.1:8000/api/v1/chat \
 - 清洗顺序与幂等、零宽字符；
 - 1500+ 字符表格保持原子、超 60KB 表格降级切分；
 - 确定性主键、父子块映射、chunk_index 连续；
-- 8 种格式解析、表格转 Markdown、ACL 优先级；
+- 多格式解析（含 PDF 中文提取、DOCX 标题转 Markdown）、表格转 Markdown、ACL 优先级；
 - milvus-lite 建库、dense/sparse 检索、filter、尾巴删除、force 重建；
 - 增量入库：重复 ingest unchanged、文档变短无残留、删除文档清理索引；
 - RRF 融合、父块去重、ACL 泄漏拦截；
@@ -299,16 +334,16 @@ curl -s http://127.0.0.1:8000/api/v1/chat \
 - 评估指标解析（含智谱 XML 风格输出）；
 - FastAPI 端点与 OpenAPI。
 
-测试使用 `FakeEmbedder`（8 维）和不调用 LLM 的桩，不会加载 BGE-M3、不产生费用。
+测试使用 `FakeEmbedder`（8 维）和不调用 LLM 的桩，不会加载 BGE-M3、不产生费用。语料相关断言采用动态下限（`>= 41`），避免扩充语料时测试失效。
 
 ## 已知限制
 
 - **身份是演示用的**：部门/密级由前端下拉框选择，真实系统应来自 SSO/JWT，并在服务端强制校验。README 和 UI 都明确写了这一点。
 - **milvus-lite 是单机嵌入式**：同一时间不要一边 `serve` 一边跑 `ingest`；推荐入库完成后再启动 API。
-- **4GB 显存**：最大长度 1024、batch 8；没有做 ColBERT 多向量和 reranker，避免显存和复杂度失控。
+- **4GB 显存**：最大长度 1024、batch 8；没有做 ColBERT 多向量和 reranker，避免显存和复杂度失控。**这也是 MRR@5 停在 0.976 的主要原因。**
 - **离线模式是抽取式**：没有 LLM 时只返回检索片段，不会判断相关性，也不会拒答语料外问题；拒答能力需要真实 LLM。
 - **PDF 只支持数字版**：可提取文本过少的 PDF 会明确报错，不做 OCR。
-- **黄金集规模小**：14 条用例用于验证工程正确性，不是统计意义上的评测集。
+- **黄金集仍是小规模**：50 条用例用于验证工程正确性，不是统计意义上的评测集；且部分用例的候选池不足 5 篇，Recall@5 会偏乐观。
 - **会话在内存里**：API 的 session history 存在进程内，重启即丢失；生产应放 Redis/DB。
 - **没有流式输出**：当前是一次性返回；可以在此基础上加 SSE。
 
@@ -323,20 +358,38 @@ curl -s http://127.0.0.1:8000/api/v1/chat \
 7. **主键字段不叫 `id` 时**：pymilvus 的 hit 需要按自定义主键名（这里是 `pk`）取值，不能直接 `hit["id"]`。
 8. **`MILVUS_URI` 不能作为配置键**：pymilvus 导入时会自己 `load_dotenv()`，本地路径会被判为非法 URI。本项目所有配置统一 `RAG_` 前缀。
 9. **本机 LibreOffice 在沙箱里无法加载文件**：PDF 演示文档改用 reportlab + `STSong-Light` CID 字体生成，pypdfium2 能正常提取中文。
+10. **中文字体缺字形**：`STSong-Light` 没有 `·`，列表圆点必须用 `bulletText="•"`，否则显示成方框。
+11. **同一内容别部署多种格式**：会让同一文本被索引多次，检索结果重复、评估匹配错文档。本项目每篇只部署一种格式。
+12. **格式轮换会让黄金集路径失效**：重新部署语料后必须按 stem 重解析扩展名（本次有 4 条从 `.docx/.html/.md/.pptx` 变成 `.pdf`）。
 
 ## 成本说明
 
 - `probe`、`pytest`、`ingest`、`eval --no-faithfulness` **不调用 LLM，零费用**。
 - `ask` / `chat` 有 Key 时会调用一次主 LLM（多轮再加一次轻量改写）。
-- `eval` 有 Key 时每条用例 1 次生成 + 1 次裁判，14 条约 28 次调用；使用 `glm-4-flash` 成本很低。
+- `eval` 有 Key 时每条用例 1 次生成 + 1 次裁判，50 条约 100 次调用；使用 `glm-4-flash` 成本很低。
 - `probe --live` 会额外调用一次 LLM。
+
+## 语料来源
+
+`docs/` 下的中文语料翻译自 [udayallu/RAG-Multi-Corpus](https://github.com/udayallu/RAG-Multi-Corpus)（MIT License, Copyright (c) 2025 UDAY ALLU）中的 ZX Bank 部分。
+
+- 原始数据为英文，本项目的译文由会话中的语言模型逐篇产出，**不调用项目配置的 LLM、不消耗用户 API 额度**。
+- 翻译仅用于学习与演示，原始版权归原作者所有；MIT 许可要求保留的版权声明见 [NOTICE](NOTICE)。
+- 中文母版存放在 `zh_src/`，命名格式 `<部门>__<密级>__<slug>.md`，由 `scripts/build_zh_corpus.py` 生成多格式副本。
+- 原始 71 篇中有 2 组内容重复（`Personal Loan.md` 与 `Personal Loan Information.md`、`ZX Bank Agriculture Loan.md` 与 `Agriculture Loan.md`），已跳过，最终 69 篇。
 
 ## 简历表述参考
 
-> 基于 BGE-M3 实现企业知识库 RAG：手写 dense（CLS 池化）+ sparse（sparse_linear 词权重）双路编码，结合 RRF 融合与父块上下文扩展；在 10 篇多格式文档、31 个检索块上达到 Recall@5=1.0、MRR@5=1.0。
+> 基于 BGE-M3 实现企业知识库 RAG：手写 dense（CLS 池化）+ sparse（sparse_linear 词权重）双路编码，结合 RRF 融合与父块上下文扩展；在 69 篇多格式中文文档、602 个检索块上达到 Recall@5=1.000、MRR@5=0.976。
 
-> 设计部门 + 密级双维度 ACL，在 Milvus 检索层执行 filter，并以「生成前二次校验」兜底；4 条越权用例 ACL 违规为 0，评估脚本在违规时以退出码 2 阻断 CI。
+> 设计部门 + 密级双维度 ACL，在 Milvus 检索层执行 filter，并以「生成前二次校验」兜底；6 条越权用例 ACL 违规为 0，评估脚本在违规时以退出码 2 阻断 CI。
 
 > 实现表格原子单元与父子块切分，1500+ 字符表格不被长度切分破坏；使用确定性主键 + content_hash 增量入库，重复 ingest 全量跳过，文档变短时先删尾巴再 upsert，避免索引残留。
 
-> 搭建 FastAPI + 单页 Web UI 的检索演示台，可视化 dense/sparse 两路命中、RRF 融合和 ACL 表达式；配套 35 个离线 pytest 用例，测试不依赖 GPU 和外部 API。
+> 搭建多格式语料生产链路：一份中文 Markdown 母版生成 PDF/DOCX/PPTX/HTML，并用项目自身 loader 回读校验片段覆盖率（阈值 95%），避免「标记消失被误判为内容丢失」。
+
+> 搭建 FastAPI + 单页 Web UI 的检索演示台，可视化 dense/sparse 两路命中、RRF 融合和 ACL 表达式；配套 37 个离线 pytest 用例，测试不依赖 GPU 和外部 API。
+
+## License
+
+代码以 MIT License 发布，见 [LICENSE](LICENSE)。`docs/` 语料为第三方数据的翻译衍生作品，其版权与许可声明见 [NOTICE](NOTICE)。

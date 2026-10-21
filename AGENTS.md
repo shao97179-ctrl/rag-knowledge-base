@@ -21,7 +21,7 @@
 .venv/bin/pytest -q
 .venv/bin/python -m rag_learning probe
 .venv/bin/python -m rag_learning ingest
-.venv/bin/python -m rag_learning ask -q "连接池耗尽了怎么处理" --dept ops --clearance internal
+.venv/bin/python -m rag_learning ask -q "UPI 的单笔和每日交易限额是多少" --dept ops --clearance internal
 .venv/bin/python -m rag_learning eval --no-faithfulness
 .venv/bin/uvicorn rag_learning.api:app --host 127.0.0.1 --port 8000
 ```
@@ -53,6 +53,16 @@
 - `parent_text` 冗余存在每个子块行里，换取检索后少一次查询；这是刻意的取舍。
 - 稀疏向量不能是空 dict，空时用 `{0: 1e-7}`。
 - Milvus VARCHAR `max_length` 是字节数，不是字符数。
+
+## 语料规则
+
+- `zh_src/` 是中文 Markdown 母版，命名 `<部门>__<密级>__<slug>.md`；`docs/` 由它生成。
+- `docs/` 必须是 `docs/<部门>/<密级>/` 两层。加中间层（如 `docs/zh-bank/ops/...`）会让 `infer_acl` 退化成 `general/public`。
+- **每篇只部署一种格式**（按 pdf / md / docx / html / pptx 轮换）。同一内容部署多份格式会被索引多次，导致检索结果重复、评估匹配错文档。
+- 格式轮换会让 `eval/golden_set.jsonl` 里的扩展名失效：重新部署后必须按 stem 重新解析实际扩展名。
+- 生成与校验统一走 `scripts/build_zh_corpus.py`，不要手写转换脚本。
+- 语料翻译自 udayallu/RAG-Multi-Corpus（MIT），版权声明见 `NOTICE`。
+
 
 ## 验证要求
 

@@ -1,0 +1,47 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # 测试全程离线：不加载 BGE-M3、不调用 LLM。
+      # 但 torch / transformers 仍是硬依赖（loaders、embedder 模块在 import 时就会拉起来），
+      # 所以这里按 lock 文件安装。
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Byte-compile all sources
+        run: uv run python -m compileall -q src scripts tests
+
+      - name: Import check
+        run: uv run python -c "from rag_learning import main; print('import ok')"
+
+      - name: Run tests
+        run: uv run pytest -q
+
+      - name: Ensure no secrets committed
+        run: |
+          if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+            echo "::error::.env 被提交进仓库了"
+            exit 1
+          fi
+          echo "no .env tracked"

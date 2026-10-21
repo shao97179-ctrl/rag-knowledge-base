@@ -1,14 +1,50 @@
-{"id": "q01", "type": "retrieval", "question": "连接池耗尽了怎么处理？", "department": "ops", "clearance": "internal", "expected_paths": ["ops/internal/db-connection-pool.txt"]}
-{"id": "q02", "type": "retrieval", "question": "P0 故障的响应时限是多少？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/incident-response.html"]}
-{"id": "q03", "type": "retrieval", "question": "年假可以跨年顺延吗？最多保留到什么时候？", "department": "hr", "clearance": "internal", "expected_paths": ["hr/internal/leave-policy.docx"]}
-{"id": "q04", "type": "retrieval", "question": "报销发票抬头和发票类型有什么要求？", "department": "finance", "clearance": "internal", "expected_paths": ["finance/internal/expense-reimbursement.pdf"]}
-{"id": "q05", "type": "retrieval", "question": "API 分页的 page_size 最大是多少？", "department": "rd", "clearance": "internal", "expected_paths": ["rd/internal/api-guidelines.pptx"]}
-{"id": "q06", "type": "retrieval", "question": "供应商合同到期前应该找谁续签？", "department": "general", "clearance": "internal", "expected_paths": ["general/internal/vendor-list.csv"]}
-{"id": "q07", "type": "retrieval", "question": "值班交接需要记录哪些内容？", "department": "ops", "clearance": "internal", "expected_paths": ["ops/internal/oncall-runbook.md"]}
-{"id": "q08", "type": "retrieval", "question": "公司对账号密码和机密资料有哪些信息安全要求？", "department": "general", "clearance": "public", "expected_paths": ["general/public/company-handbook.md"]}
-{"id": "acl01", "type": "acl", "question": "P7 职级的薪酬带宽和股权授予是多少？", "department": "ops", "clearance": "internal", "expected_paths": [], "forbidden_paths": ["hr/confidential/salary-band.xlsx"]}
-{"id": "acl02", "type": "acl", "question": "架构评审里的数据库迁移计划和容量评估是什么？", "department": "rd", "clearance": "public", "expected_paths": [], "forbidden_paths": ["rd/confidential/architecture-review.docx"]}
-{"id": "acl03", "type": "acl", "question": "薪酬带宽表的 P8 上限是多少？", "department": "hr", "clearance": "internal", "expected_paths": [], "forbidden_paths": ["hr/confidential/salary-band.xlsx"]}
-{"id": "acl04", "type": "acl", "question": "报销的住宿标准上限是多少？", "department": "finance", "clearance": "public", "expected_paths": [], "forbidden_paths": ["finance/internal/expense-reimbursement.pdf"]}
-{"id": "ref01", "type": "refusal", "question": "公司的股票代码是多少？", "department": "general", "clearance": "public", "expected_paths": [], "forbidden_paths": []}
-{"id": "ref02", "type": "refusal", "question": "今天食堂午饭吃什么？", "department": "general", "clearance": "public", "expected_paths": [], "forbidden_paths": []}
+{"id": "q01", "type": "retrieval", "question": "中兴银行农业贷款的贷款金额范围和利率优惠是什么？", "department": "finance", "clearance": "internal", "expected_paths": ["finance/internal/agriculture-loan.pdf"]}
+{"id": "q02", "type": "retrieval", "question": "个人贷款对受薪人士的利率是多少？", "department": "finance", "clearance": "internal", "expected_paths": ["finance/internal/personal-loan.pdf"]}
+{"id": "q03", "type": "retrieval", "question": "汽车贷款最快多久可以放款？", "department": "finance", "clearance": "internal", "expected_paths": ["finance/internal/zx-bank-car-loan.html"]}
+{"id": "q04", "type": "retrieval", "question": "黄金贷款的贷款价值比最高是多少？", "department": "finance", "clearance": "internal", "expected_paths": ["finance/internal/zx-bank-gold-loan.pdf"]}
+{"id": "q05", "type": "retrieval", "question": "住房贷款最长可以贷多少年？", "department": "finance", "clearance": "internal", "expected_paths": ["finance/internal/zx-bank-house-loan.pdf"]}
+{"id": "q06", "type": "retrieval", "question": "定期存款的期限选项有哪些？", "department": "finance", "clearance": "internal", "expected_paths": ["finance/internal/zx-bank-fixed-deposits.pptx"]}
+{"id": "q07", "type": "retrieval", "question": "商业贷款有哪些类型？", "department": "finance", "clearance": "internal", "expected_paths": ["finance/internal/zx-bank-business-loans.docx"]}
+{"id": "q08", "type": "retrieval", "question": "两轮车贷款的最高贷款金额是多少？", "department": "finance", "clearance": "internal", "expected_paths": ["finance/internal/zx-bank-bike-loan.md"]}
+{"id": "q09", "type": "retrieval", "question": "工资储蓄账户的最低余额要求是什么？", "department": "finance", "clearance": "internal", "expected_paths": ["finance/internal/salary-saving-account.pdf"]}
+{"id": "q10", "type": "retrieval", "question": "中兴银行是哪一年成立的？总部在哪里？", "department": "general", "clearance": "public", "expected_paths": ["general/public/about-zx-bank.pdf"]}
+{"id": "q11", "type": "retrieval", "question": "ASK 小雅在 WhatsApp 上支持哪些语言？", "department": "general", "clearance": "public", "expected_paths": ["general/public/ask-zia.md"]}
+{"id": "q12", "type": "retrieval", "question": "中兴银行获得过哪些奖项？", "department": "general", "clearance": "public", "expected_paths": ["general/public/awards-and-recognitions.docx"]}
+{"id": "q13", "type": "retrieval", "question": "活期账户的最低余额要求是多少？", "department": "general", "clearance": "public", "expected_paths": ["general/public/current-account-overview.html"]}
+{"id": "q14", "type": "retrieval", "question": "储蓄账户的零余额账户有什么条件？", "department": "general", "clearance": "public", "expected_paths": ["general/public/savings-account-overview.pdf"]}
+{"id": "q15", "type": "retrieval", "question": "个人客户经理助理计划提供哪些服务？", "department": "general", "clearance": "public", "expected_paths": ["general/public/personal-relationship-manager.pptx"]}
+{"id": "q16", "type": "retrieval", "question": "工资账户如何转为储蓄账户？", "department": "general", "clearance": "public", "expected_paths": ["general/public/salary-account-to-savings-account.pdf"]}
+{"id": "q17", "type": "retrieval", "question": "储蓄账户如何转为工资账户？", "department": "general", "clearance": "public", "expected_paths": ["general/public/savings-account-to-salary-account.pdf"]}
+{"id": "q18", "type": "retrieval", "question": "健康保险的等待期和既往症是怎么规定的？", "department": "hr", "clearance": "internal", "expected_paths": ["hr/internal/health-insurance.md"]}
+{"id": "q19", "type": "retrieval", "question": "如何设置账单自动扣款？", "department": "ops", "clearance": "internal", "expected_paths": ["ops/internal/bill-payments.docx"]}
+{"id": "q20", "type": "retrieval", "question": "跨境支付支持哪些币种？", "department": "ops", "clearance": "internal", "expected_paths": ["ops/internal/cross-border-payments.html"]}
+{"id": "q21", "type": "retrieval", "question": "网上银行的每日转账限额是多少？", "department": "ops", "clearance": "internal", "expected_paths": ["ops/internal/netbanking-guide.pptx"]}
+{"id": "q22", "type": "retrieval", "question": "开立保管箱需要满足什么条件？", "department": "ops", "clearance": "internal", "expected_paths": ["ops/internal/open-a-locker.pdf"]}
+{"id": "q23", "type": "retrieval", "question": "UPI 的单笔和每日交易限额是多少？", "department": "ops", "clearance": "internal", "expected_paths": ["ops/internal/upi-zx-bank-asia.pdf"]}
+{"id": "q24", "type": "retrieval", "question": "中兴银行亚洲版移动应用有哪些功能？", "department": "ops", "clearance": "internal", "expected_paths": ["ops/internal/zx-bank-asia-mobile-app-guide.pdf"]}
+{"id": "q25", "type": "retrieval", "question": "如何注销中兴银行信用卡？", "department": "ops", "clearance": "internal", "expected_paths": ["ops/internal/zx-bank-credit-card-help.docx"]}
+{"id": "q26", "type": "retrieval", "question": "中兴白金信用卡的年费和权益是什么？", "department": "ops", "clearance": "internal", "expected_paths": ["ops/internal/zx-bank-credit-card.md"]}
+{"id": "q27", "type": "retrieval", "question": "阿格拉有哪些中兴银行分行？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/agra-branch-network-overview.html"]}
+{"id": "q28", "type": "retrieval", "question": "艾哈迈达巴德北部分行的地址和 IFSC 代码是什么？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/ahmedabad-branch-network.pptx"]}
+{"id": "q29", "type": "retrieval", "question": "如何申请支票簿？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/apply-for-a-cheque-book.pdf"]}
+{"id": "q30", "type": "retrieval", "question": "巴特那有多少家中兴银行分行？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/bank-branches-in-patna.pdf"]}
+{"id": "q31", "type": "retrieval", "question": "加尔各答中部分行的地址有哪些？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/branches-in-kolkata.pdf"]}
+{"id": "q32", "type": "retrieval", "question": "那格浦尔南部分行的联系电话是多少？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/branches-in-nagpur.pdf"]}
+{"id": "q33", "type": "retrieval", "question": "博帕尔有几家分行？分别在哪里？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/branch-network-in-bhopal.pdf"]}
+{"id": "q34", "type": "retrieval", "question": "印多尔 Vijay Nagar 区域的分行在哪里？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/branch-network-in-indore.html"]}
+{"id": "q35", "type": "retrieval", "question": "坎普尔北部分行的地址列表？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/kanpur-branch-network.docx"]}
+{"id": "q36", "type": "retrieval", "question": "哥印拜陀东部分行在哪里？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/network-in-coimbatore.pdf"]}
+{"id": "q37", "type": "retrieval", "question": "卢迪亚纳有多少家分行？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/network-in-ludhiana.pdf"]}
+{"id": "q38", "type": "retrieval", "question": "维沙卡帕特南西部分行的地址是什么？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/visakhapatnam-branch-network.pdf"]}
+{"id": "q39", "type": "retrieval", "question": "发现欺诈交易后应该怎么处理？", "department": "rd", "clearance": "confidential", "expected_paths": ["rd/confidential/fraud-transaction.md"]}
+{"id": "q40", "type": "retrieval", "question": "中兴银行采用哪些多因素认证方式？", "department": "rd", "clearance": "confidential", "expected_paths": ["rd/confidential/safety-features.docx"]}
+{"id": "q41", "type": "retrieval", "question": "如何设置强密码并防范钓鱼攻击？", "department": "rd", "clearance": "confidential", "expected_paths": ["rd/confidential/safety-practices.html"]}
+{"id": "acl01", "type": "acl", "question": "中兴银行的风险控制和安全防护措施有哪些？", "department": "ops", "clearance": "internal", "expected_paths": [], "forbidden_paths": ["rd/confidential/safety-features.docx", "rd/confidential/fraud-transaction.md", "rd/confidential/safety-practices.html"]}
+{"id": "acl02", "type": "acl", "question": "健康保险的理赔流程是怎样的？", "department": "ops", "clearance": "internal", "expected_paths": [], "forbidden_paths": ["hr/internal/health-insurance.md"]}
+{"id": "acl03", "type": "acl", "question": "个人贷款的利率和申请材料？", "department": "general", "clearance": "public", "expected_paths": [], "forbidden_paths": ["finance/internal/personal-loan.pdf", "finance/internal/agriculture-loan.pdf"]}
+{"id": "acl04", "type": "acl", "question": "工资储蓄账户有什么权益？", "department": "ops", "clearance": "public", "expected_paths": [], "forbidden_paths": ["finance/internal/salary-saving-account.pdf"]}
+{"id": "acl05", "type": "acl", "question": "风险管理相关的安全实践有哪些？", "department": "rd", "clearance": "internal", "expected_paths": [], "forbidden_paths": ["rd/confidential/safety-features.docx", "rd/confidential/safety-practices.html", "rd/confidential/fraud-transaction.md"]}
+{"id": "acl06", "type": "acl", "question": "信用卡的年费和额度是多少？", "department": "general", "clearance": "public", "expected_paths": [], "forbidden_paths": ["ops/internal/zx-bank-credit-card.md", "ops/internal/zx-bank-credit-card-help.docx"]}
+{"id": "ref01", "type": "refusal", "question": "今天食堂午饭吃什么？", "department": "general", "clearance": "public", "expected_paths": [], "forbidden_paths": []}
+{"id": "ref02", "type": "refusal", "question": "中兴银行在火星有分行吗？", "department": "general", "clearance": "public", "expected_paths": [], "forbidden_paths": []}
+{"id": "ref03", "type": "refusal", "question": "公司股票代码是多少？", "department": "general", "clearance": "public", "expected_paths": [], "forbidden_paths": []}

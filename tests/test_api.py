@@ -15,11 +15,11 @@ def _chunk() -> RetrievedChunk:
         doc_id="doc1",
         chunk_index=0,
         parent_id="parent1",
-        child_text="连接池耗尽时先检查 max_connections。",
-        parent_text="连接池耗尽时先检查 max_connections 和慢查询。",
-        heading="连接池",
-        title="数据库连接池排查手册",
-        source_path="ops/internal/db-connection-pool.txt",
+        child_text="UPI 的单笔交易限额为 10 万卢比。",
+        parent_text="UPI 的单笔交易限额为 10 万卢比，每日限额也是 10 万卢比。",
+        heading="UPI",
+        title="统一支付接口（UPI）指南",
+        source_path="ops/internal/upi-zx-bank-asia.pdf",
         department="ops",
         sensitivity="internal",
         doc_format="text",
@@ -45,7 +45,7 @@ class FakeRegistry:
         return [
             DocumentRecord(
                 doc_id="doc1",
-                rel_path="ops/internal/db-connection-pool.txt",
+                rel_path="ops/internal/upi-zx-bank-asia.pdf",
                 content_hash="hash",
                 department="ops",
                 sensitivity="internal",
@@ -86,16 +86,16 @@ class FakePipeline:
     def ask(self, query, user, history=None, top_k=None):
         """模拟问答：返回带引用的固定答案。"""
         return AnswerResult(
-            answer="先检查 max_connections [1]。",
+            answer="UPI 单笔限额为 10 万卢比 [1]。",
             citations=[
                 Citation(
                     index=1,
-                    title="数据库连接池排查手册",
-                    source_path="ops/internal/db-connection-pool.txt",
-                    heading="连接池",
+                    title="统一支付接口（UPI）指南",
+                    source_path="ops/internal/upi-zx-bank-asia.pdf",
+                    heading="UPI",
                     department="ops",
                     sensitivity="internal",
-                    snippet="连接池耗尽时先检查 max_connections。",
+                    snippet="UPI 的单笔交易限额为 10 万卢比。",
                     score=0.0325,
                 )
             ],
@@ -126,14 +126,14 @@ def test_meta_and_documents() -> None:
     assert "confidential" in meta["sensitivities"]
 
     documents = client.get("/api/v1/documents").json()
-    assert documents["documents"][0]["rel_path"] == "ops/internal/db-connection-pool.txt"
+    assert documents["documents"][0]["rel_path"] == "ops/internal/upi-zx-bank-asia.pdf"
 
 
 def test_search_and_chat() -> None:
     """/search 返回上下文和调试信息；/chat 返回答案、引用和调试信息。"""
     client = _client()
     payload = {
-        "query": "连接池耗尽了怎么处理？",
+        "query": "UPI耗尽了怎么处理？",
         "department": "ops",
         "clearance": "internal",
     }
@@ -144,7 +144,7 @@ def test_search_and_chat() -> None:
     chat = client.post("/api/v1/chat", json={**payload, "session_id": "test", "debug": True})
     assert chat.status_code == 200
     body = chat.json()
-    assert "max_connections" in body["answer"]
+    assert "10 万卢比" in body["answer"]
     assert body["citations"][0]["source_path"].startswith("ops/")
     assert body["debug"]["retrieval"]["dense_count"] == 1
 
