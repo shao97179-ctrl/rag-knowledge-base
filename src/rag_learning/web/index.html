@@ -261,7 +261,7 @@
         </div>
       </div>
       <form id="composer" class="composer">
-        <textarea id="input" rows="1" placeholder="例如：连接池耗尽了怎么处理？"></textarea>
+        <textarea id="input" rows="1" placeholder="例如：UPI 的单笔交易限额是多少？"></textarea>
         <button id="send" class="send" type="submit">发送</button>
       </form>
     </section>
@@ -283,11 +283,11 @@
   };
 
   const EXAMPLES = [
-    { q: "连接池耗尽了怎么处理？", dept: "ops", clearance: "internal", label: "连接池排查" },
-    { q: "P0 故障的响应时限是多少？", dept: "ops", clearance: "public", label: "P0 响应时限" },
-    { q: "报销发票有什么要求？", dept: "finance", clearance: "internal", label: "报销发票" },
-    { q: "P7 职级的薪酬带宽是多少？", dept: "ops", clearance: "internal", label: "权限演示：薪酬" },
-    { q: "公司股票代码是多少？", dept: "general", clearance: "public", label: "拒答演示" },
+    { q: "UPI 的单笔和每日交易限额是多少？", dept: "ops", clearance: "internal", label: "UPI 交易限额" },
+    { q: "住房贷款最长可以贷多少年？", dept: "finance", clearance: "internal", label: "住房贷款年限" },
+    { q: "健康保险的等待期和既往症是怎么规定的？", dept: "hr", clearance: "internal", label: "健康保险" },
+    { q: "信用卡的年费和额度是多少？", dept: "general", clearance: "public", label: "权限演示：信用卡" },
+    { q: "中兴银行在火星有分行吗？", dept: "general", clearance: "public", label: "拒答演示" },
   ];
 
   function el(tag, className, text) {

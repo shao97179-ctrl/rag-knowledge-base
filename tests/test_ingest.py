@@ -1,6 +1,8 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from rag_learning.ingest import Ingestor
 from rag_learning.registry import Registry
 from rag_learning.vector_store import MilvusStore
@@ -59,6 +61,23 @@ def _setup(tmp_path: Path):
     store = MilvusStore(uri=str(tmp_path / "milvus.db"), collection="test_chunks", dimension=DIM)
     registry = Registry(tmp_path / "registry.sqlite")
     return pool, salary, Ingestor(settings, FakeEmbedder(), store, registry), store, registry
+
+
+def test_force_with_explicit_paths_is_rejected(tmp_path: Path) -> None:
+    """force 与指定文件互斥：误操作必须在清库之前被拦下，索引原封不动。"""
+    pool, _, ingestor, store, registry = _setup(tmp_path)
+    try:
+        first = ingestor.ingest()
+        assert first.indexed == 2
+
+        with pytest.raises(ValueError, match="--force"):
+            ingestor.ingest(paths=[pool], force=True)
+
+        # 守卫在 recreate 之前生效：集合和注册表都不能被动过
+        assert store.count() == first.total_chunks
+        assert len(registry.list_all()) == 2
+    finally:
+        store.close()
 
 
 def test_incremental_ingest_and_acl(tmp_path: Path) -> None:

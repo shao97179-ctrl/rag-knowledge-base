@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="企业知识库 RAG",
     version="0.1.0",
-    description="BGE-M3 混合检索 + 权限隔离 + 可量化评估。身份切换仅用于演示，不是生产鉴权。",
+    description="BGE-M3 混合检索 + 权限隔离 + 可量化评估。",
 )
 # 演示用途放开所有来源；生产应改成白名单
 app.add_middleware(

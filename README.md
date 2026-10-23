@@ -147,8 +147,8 @@ cp .env.example .env
 | 命令 | 作用 |
 | --- | --- |
 | `python -m rag_learning ingest` | 全量扫描 `docs/`，未变化文档跳过 |
-| `python -m rag_learning ingest <文件>` | 只入库一个文件 |
-| `python -m rag_learning ingest --force` | 重建集合和索引，验证无残留 |
+| `python -m rag_learning ingest <文件>` | 只入库一个文件（不能与 `--force` 同用） |
+| `python -m rag_learning ingest --force` | 清空后全量重建集合和索引，验证无残留 |
 | `python -m rag_learning ingest --department ops --sensitivity internal` | 单文件入库时覆盖权限 |
 | `python -m rag_learning ask -q "..." --dept ops --clearance internal` | 单次问答 |
 | `python -m rag_learning ask --dept hr --clearance internal` | 交互式多轮 |

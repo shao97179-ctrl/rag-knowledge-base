@@ -34,7 +34,7 @@ def normalize_sensitivity(value: str) -> str:
 
 @dataclass(frozen=True)
 class UserContext:
-    """一次查询的身份：部门 + 密级。演示用，不是生产鉴权。"""
+    """一次查询的身份：部门 + 密级。"""
 
     department: str = "general"
     clearance: str = "public"

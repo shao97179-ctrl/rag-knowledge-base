@@ -105,6 +105,13 @@ class Ingestor:
         override: AclOverride | None = None,
     ) -> IngestSummary:
         """入库主流程：可选全量扫描、force 重建、单文件处理以及删除清理。"""
+        if force and paths:
+            # force 会先清空集合和注册表，若此时只处理指定文件，
+            # 整个索引会被替换成这一个文件，属于必须拦下的误操作
+            raise ValueError(
+                "--force 会清空整个索引后重建，不能与指定文件同时使用；"
+                "需要重建单篇文档请直接全量 ingest --force，或去掉 --force 单独入库该文件"
+            )
         docs_root: Path = self.settings.docs_dir
         summary = IngestSummary()
 

@@ -104,6 +104,12 @@ def ingest(
     sensitivity: Optional[str] = typer.Option(None, "--sensitivity", help="覆盖密级"),
 ) -> None:
     """解析文档并写入 Milvus；未变化的文档自动跳过。"""
+    # Ingestor 里还有一层兜底，这里先拦住是为了给用户干净的报错而不是 traceback
+    if force and path:
+        raise typer.BadParameter(
+            "--force 会清空整个索引后重建，不能与文件参数同时使用；"
+            "需要重建单篇文档请直接全量 ingest --force，或去掉 --force 单独入库该文件"
+        )
     settings = get_settings()
     override = None
     if department or sensitivity:
