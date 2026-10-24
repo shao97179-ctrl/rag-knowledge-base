@@ -343,10 +343,15 @@
   async function loadDocuments() {
     const container = $("#documents");
     try {
-      const payload = await api("/api/v1/documents");
+      // 列表按当前身份过滤，切换部门/密级后要重新拉取
+      const query = new URLSearchParams({
+        department: $("#department").value,
+        clearance: $("#clearance").value,
+      });
+      const payload = await api("/api/v1/documents?" + query.toString());
       container.innerHTML = "";
       if (!payload.documents.length) {
-        container.textContent = "还没有入库文档，先运行 rag-learning ingest。";
+        container.textContent = "当前身份没有可见文档，试试切换部门或密级。";
         return;
       }
       payload.documents.forEach((doc) => {
@@ -586,11 +591,15 @@
   });
 
   renderExamples();
-  loadMeta().catch((error) => {
-    $("#llm-badge").textContent = "后端连接失败：" + error.message;
-    $("#llm-badge").className = "badge offline";
-  });
-  loadDocuments();
+  // 必须等 meta 把部门/密级下拉框填完再拉文档列表，否则身份参数是空的
+  loadMeta()
+    .then(() => loadDocuments())
+    .catch((error) => {
+      $("#llm-badge").textContent = "后端连接失败：" + error.message;
+      $("#llm-badge").className = "badge offline";
+    });
+  $("#department").addEventListener("change", loadDocuments);
+  $("#clearance").addEventListener("change", loadDocuments);
 </script>
 </body>
 </html>

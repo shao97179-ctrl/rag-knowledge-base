@@ -126,9 +126,19 @@ def meta(pipeline: RAGPipeline = Depends(get_pipeline_dep)) -> dict:
 
 
 @app.get("/api/v1/documents")
-def documents(pipeline: RAGPipeline = Depends(get_pipeline_dep)) -> dict:
-    """已入库文档列表，含权限和块数。"""
-    return {"documents": [asdict(record) for record in pipeline.registry.list_all()]}
+def documents(
+    department: str = "general",
+    clearance: str = "public",
+    pipeline: RAGPipeline = Depends(get_pipeline_dep),
+) -> dict:
+    """按当前身份过滤后的文档列表；无权文档连元数据都不返回。"""
+    user = _user(department, clearance)
+    visible = [
+        asdict(record)
+        for record in pipeline.registry.list_all()
+        if user.can_access(record.department, record.sensitivity)
+    ]
+    return {"documents": visible}
 
 
 @app.post("/api/v1/search")

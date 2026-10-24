@@ -23,26 +23,32 @@ class LLMClient:
         self.provider = settings.llm_provider
         self.api_key = settings.api_key
         self.available = settings.llm_available
-        # 按模型名缓存 client，主模型和轻量改写模型各一个
-        self._clients: dict[str, ChatOpenAI] = {}
+        # 按 (model, temperature) 缓存 client；chat 传不同温度时各建一个
+        self._clients: dict[tuple[str, float], ChatOpenAI] = {}
         if not self.available:
             logger.warning("LLM 不可用（provider=%s），进入离线抽取式模式", self.provider)
 
-    def _client(self, model: str | None = None) -> ChatOpenAI | None:
-        """取（或懒创建）某个模型的 client；离线模式返回 None。"""
+    def _client(self, model: str | None = None, temperature: float | None = None) -> ChatOpenAI | None:
+        """取（或懒创建）某个模型的 client；离线模式返回 None。
+
+        temperature 为 None 时用配置里的默认值；改写和裁判传 0.0 拿确定性输出，
+        这里必须真的把温度传下去，而不是只在签名里占位。
+        """
         if not self.available:
             return None
         model = model or self.settings.llm_model
-        if model not in self._clients:
-            self._clients[model] = ChatOpenAI(
+        effective = self.settings.llm_temperature if temperature is None else temperature
+        key = (model, effective)
+        if key not in self._clients:
+            self._clients[key] = ChatOpenAI(
                 model=model,
                 api_key=self.api_key,
                 base_url=self.settings.llm_base_url,
-                temperature=self.settings.llm_temperature,
+                temperature=effective,
                 timeout=self.settings.llm_timeout,
                 max_retries=1,
             )
-        return self._clients[model]
+        return self._clients[key]
 
     def chat(
         self,
@@ -52,7 +58,7 @@ class LLMClient:
         temperature: float | None = None,
     ) -> str | None:
         """返回文本；失败返回 None，由调用方走降级路径。"""
-        client = self._client(model)
+        client = self._client(model, temperature)
         if client is None:
             return None
         started = time.perf_counter()

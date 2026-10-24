@@ -38,10 +38,10 @@ class FakeLLM:
 
 
 class FakeRegistry:
-    """注册表桩：固定返回一条文档记录。"""
+    """注册表桩：返回两条权限不同的记录，供 /documents 验证过滤。"""
 
     def list_all(self):
-        """返回单条文档记录，供 /documents 和 health 使用。"""
+        """一条 ops/internal，一条 rd/confidential。"""
         return [
             DocumentRecord(
                 doc_id="doc1",
@@ -52,7 +52,17 @@ class FakeRegistry:
                 doc_format="text",
                 chunk_count=1,
                 indexed_at="2026-10-20T00:00:00+00:00",
-            )
+            ),
+            DocumentRecord(
+                doc_id="doc2",
+                rel_path="rd/confidential/fraud-transaction.md",
+                content_hash="hash",
+                department="rd",
+                sensitivity="confidential",
+                doc_format="markdown",
+                chunk_count=1,
+                indexed_at="2026-10-20T00:00:00+00:00",
+            ),
         ]
 
 
@@ -119,14 +129,34 @@ def teardown_function() -> None:
 
 
 def test_meta_and_documents() -> None:
-    """/meta 返回枚举，/documents 返回注册表内容。"""
+    """/meta 返回枚举；/documents 默认身份（general/public）只能看到公开文档。"""
     client = _client()
     meta = client.get("/api/v1/meta").json()
     assert "ops" in meta["departments"]
     assert "confidential" in meta["sensitivities"]
 
     documents = client.get("/api/v1/documents").json()
-    assert documents["documents"][0]["rel_path"] == "ops/internal/upi-zx-bank-asia.pdf"
+    assert documents["documents"] == []
+
+
+def test_documents_filtered_by_identity() -> None:
+    """/documents 按身份过滤：ops/internal 看不到 rd/confidential，rd/confidential 全能看到。"""
+    client = _client()
+
+    ops = client.get(
+        "/api/v1/documents", params={"department": "ops", "clearance": "internal"}
+    ).json()
+    assert [doc["rel_path"] for doc in ops["documents"]] == ["ops/internal/upi-zx-bank-asia.pdf"]
+
+    # rd/confidential 只能看 rd 和 general 部门，密级再高也看不到 ops 的文档
+    rd = client.get(
+        "/api/v1/documents", params={"department": "rd", "clearance": "confidential"}
+    ).json()
+    assert [doc["rel_path"] for doc in rd["documents"]] == ["rd/confidential/fraud-transaction.md"]
+
+    # 身份非法时和其他端点一样返回 400，而不是 500
+    bad = client.get("/api/v1/documents", params={"department": "unknown"})
+    assert bad.status_code == 400
 
 
 def test_search_and_chat() -> None:
