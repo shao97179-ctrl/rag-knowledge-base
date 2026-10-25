@@ -64,3 +64,20 @@ def test_no_context_is_refusal() -> None:
     )
     assert result.refused is True
     assert is_refusal(result.answer)
+
+
+def test_hedged_answer_is_not_refusal() -> None:
+    """先说资料没写什么、再给实际内容的答案不能判成拒答。"""
+    # 话术在句子开头但紧跟转折，属于「部分拒答 + 补充」
+    assert not is_refusal("资料中没有写明具体日期，但住房贷款最长可贷 30 年[1]。")
+    assert not is_refusal("无法确定具体利率，不过资料写明年限最长 30 年。")
+    # 话术出现在后半段，第一句已经是正常回答
+    assert not is_refusal("住房贷款最长可贷 30 年[1]。资料中没有提及利率。")
+
+
+def test_refusal_variants_are_still_caught() -> None:
+    """拒答话术在第一句、后面跟建议或省略句号的都算拒答。"""
+    assert is_refusal("根据现有资料无法回答。")
+    assert is_refusal("根据现有资料无法回答。建议携带证件到网点咨询。")
+    assert is_refusal("资料中没有相关信息")
+    assert is_refusal("抱歉，这个问题未找到相关说明。")

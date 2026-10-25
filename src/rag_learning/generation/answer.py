@@ -15,21 +15,45 @@ logger = logging.getLogger(__name__)
 # 答案里的引用标记，例如 "[1]"、"[12]"
 CITATION_RE = re.compile(r"\[(\d+)\]")
 
-# 拒答的判定词；模型措辞可能不同，所以用多个模式做包含匹配
+# 拒答的判定话术。prompt 要求模型拒答时把结论放在答案开头，
+# 所以只检查第一句；正文后半段提到这些词的（先答一半再补充说明）不算。
+# 「资料中没有」单用太宽——「资料中没有写明 X，但 Y」是正常回答——收紧成「资料中没有相关」。
 REFUSAL_PATTERNS = (
     "根据现有资料无法回答",
     "无法回答",
-    "资料中没有",
     "没有相关信息",
     "未找到相关",
     "不足以回答",
     "无法确定",
+    "资料中没有相关",
 )
+
+# 转折词：话术后面紧跟转折、又给出实际内容的是「部分拒答 + 补充」，不当拒答处理
+_TURN_WORDS = ("但", "不过", "然而", "可是")
+
+
+def _first_sentence(text: str) -> str:
+    """截取第一个句号 / 问号 / 感叹号 / 换行之前的内容。"""
+    for index, char in enumerate(text):
+        if char in "。！？!?\n":
+            return text[:index]
+    return text
 
 
 def is_refusal(answer: str) -> bool:
-    """判断答案是否是拒答；只做关键词包含，简单但对固定 prompt 足够稳。"""
-    return any(pattern in answer for pattern in REFUSAL_PATTERNS)
+    """判断答案是否拒答：话术要出现在第一句里，且后面没有转折补充。"""
+    first = _first_sentence(answer.strip())
+    if not first:
+        return False
+    for pattern in REFUSAL_PATTERNS:
+        position = first.find(pattern)
+        if position == -1:
+            continue
+        rest = first[position + len(pattern):]
+        if any(word in rest for word in _TURN_WORDS):
+            continue
+        return True
+    return False
 
 
 def build_citations(
