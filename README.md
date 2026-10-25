@@ -15,7 +15,7 @@
 
   MRR 未达 1.0 是刻意保留的真实结果：语料里存在方向相反的镜像文档（「工资账户转储蓄账户」vs「储蓄账户转工资账户」）和同一概念的多篇近似文档，双塔向量无法完全区分。这正是后续引入 reranker 的动机，详见 [已知限制](#已知限制)。
 - 提供 CLI、FastAPI、单页 Web UI；UI 可切换部门/密级，并实时展示两路召回和 RRF 过程。
-- **43 个 pytest 用例**，不加载 BGE-M3、不调用 LLM，全部离线可跑。
+- **46 个 pytest 用例**，不加载 BGE-M3、不调用 LLM，全部离线可跑。
 
 语料分布：
 
@@ -100,7 +100,7 @@ rag-learning/
 │   ├── build_zh_corpus.py       # 母版 -> 5 种格式 + 回读校验（当前语料由它生成）
 │   ├── build_demo_docs.py       # 最早的演示文档脚本（已废弃，输出到 docs_legacy_demo/）
 │   └── probe_m0.py              # 最初的 M0 技术验证脚本
-└── tests/                       # 43 个离线测试
+└── tests/                       # 46 个离线测试
 ```
 
 ## 快速开始
@@ -296,7 +296,7 @@ MRR 低于 1.0 的两条用例值得单独说明，它们暴露的是**双塔检
 | GET | `/api/v1/health` | 模型、Milvus、文档数量状态 |
 | GET | `/api/v1/meta` | 部门、密级、LLM 信息，供 UI 初始化 |
 | GET | `/api/v1/documents?department=ops&clearance=internal` | 按身份过滤后的文档列表 |
-| POST | `/api/v1/search` | 只检索，返回双路召回和 RRF 调试信息 |
+| POST | `/api/v1/search` | 只检索；`debug=true` 时返回双路召回和 RRF 调试信息 |
 | POST | `/api/v1/chat` | 检索 + 生成，返回答案、引用、会话历史 |
 | GET | `/` | 单页 Web UI |
 | GET | `/docs` | Swagger |
@@ -388,7 +388,7 @@ curl -s http://127.0.0.1:8000/api/v1/chat \
 
 > 搭建多格式语料生产链路：一份中文 Markdown 母版生成 PDF/DOCX/PPTX/HTML，并用项目自身 loader 回读校验片段覆盖率（阈值 95%），避免「标记消失被误判为内容丢失」。
 
-> 搭建 FastAPI + 单页 Web UI 的检索演示台，可视化 dense/sparse 两路命中、RRF 融合和 ACL 表达式；配套 43 个离线 pytest 用例，测试不依赖 GPU 和外部 API。
+> 搭建 FastAPI + 单页 Web UI 的检索演示台，可视化 dense/sparse 两路命中、RRF 融合和 ACL 表达式；配套 46 个离线 pytest 用例，测试不依赖 GPU 和外部 API。
 
 ## License
 

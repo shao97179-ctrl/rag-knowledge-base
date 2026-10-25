@@ -2,10 +2,11 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
+from rag_learning import api
 from rag_learning.api import app, get_pipeline_dep
 from rag_learning.registry import DocumentRecord
 from rag_learning.retrieval.hybrid import RetrievalResult
-from rag_learning.schema import AnswerResult, Citation, RetrievedChunk
+from rag_learning.schema import AnswerResult, Citation, RetrievedChunk, UserContext
 
 
 def _chunk() -> RetrievedChunk:
@@ -124,8 +125,9 @@ def _client() -> TestClient:
 
 
 def teardown_function() -> None:
-    """每个用例结束后清掉 override，避免污染其他测试。"""
+    """每个用例结束后清掉 override 和会话，避免污染其他测试。"""
     app.dependency_overrides.clear()
+    api._SESSIONS.clear()
 
 
 def test_meta_and_documents() -> None:
@@ -157,6 +159,50 @@ def test_documents_filtered_by_identity() -> None:
     # 身份非法时和其他端点一样返回 400，而不是 500
     bad = client.get("/api/v1/documents", params={"department": "unknown"})
     assert bad.status_code == 400
+
+
+def test_search_debug_is_opt_in() -> None:
+    """/search 默认不返回 debug，显式传 debug=true 才返回。"""
+    client = _client()
+    payload = {"query": "UPI 限额", "department": "ops", "clearance": "internal"}
+
+    default = client.post("/api/v1/search", json=payload).json()
+    assert default["debug"] == {}
+
+    opened = client.post("/api/v1/search", json={**payload, "debug": True}).json()
+    assert opened["debug"]["filter_expr"]
+
+
+def test_session_history_capped_and_identity_bound() -> None:
+    """会话轮数有上限；同一个 session_id 换身份是另一个会话，历史不共享。"""
+    ops = UserContext("ops", "internal")
+    finance = UserContext("finance", "internal")
+    key = api._session_key("s1", ops)
+
+    for index in range(15):
+        api._remember(key, f"问{index}", f"答{index}")
+
+    # 上限是 10 轮 = 20 条，15 轮写进去只留最近 10 轮
+    history = api._get_history(key)
+    assert len(history) == api._SESSION_TURNS * 2
+    assert history[0] == {"role": "user", "content": "问5"}
+    assert api._get_history(api._session_key("s1", finance)) is None
+
+
+def test_session_ttl_and_total_limit(monkeypatch) -> None:
+    """闲置过期的会话会被清掉；总量到上限后最久未用的先淘汰。"""
+    # TTL 设成 -1：刚写入的会话也立刻判定过期
+    monkeypatch.setattr(api, "_SESSION_TTL", -1)
+    api._remember("k1", "问", "答")
+    assert api._get_history("k1") is None
+    assert "k1" not in api._SESSIONS
+
+    monkeypatch.setattr(api, "_SESSION_TTL", 60)
+    monkeypatch.setattr(api, "_SESSION_LIMIT", 1)
+    api._remember("k1", "问", "答")
+    api._remember("k2", "问", "答")
+    assert "k1" not in api._SESSIONS
+    assert "k2" in api._SESSIONS
 
 
 def test_search_and_chat() -> None:
