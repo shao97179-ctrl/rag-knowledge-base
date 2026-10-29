@@ -24,7 +24,7 @@ class QueryRewriter:
         self.llm = llm
         self.light_model = light_model
 
-    def rewrite(self, query: str, history: list[dict] | None) -> str:
+    async def rewrite(self, query: str, history: list[dict] | None) -> str:
         """有历史且 LLM 可用时改写；任何一步失败都退回原问题。"""
         original = clean_query(query)
         # 单轮对话没有指代问题，直接返回，省一次 API 调用
@@ -39,7 +39,7 @@ class QueryRewriter:
             for item in history[-6:]
         )
         user_prompt = f"对话历史：\n{history_text}\n\n最新问题：{original}\n\n改写后的问题："
-        result = self.llm.chat(
+        result = await self.llm.achat(
             SYSTEM_PROMPT,
             user_prompt,
             model=self.light_model,

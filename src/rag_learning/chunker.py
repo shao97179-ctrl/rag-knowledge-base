@@ -21,8 +21,10 @@ logger = logging.getLogger(__name__)
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 # 表格数据行：整行以竖线包围
 TABLE_LINE_RE = re.compile(r"^\s*\|.*\|\s*$")
-# 表格分隔行：| --- | :---: |
-TABLE_SEP_RE = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$")
+# 表格分隔行：| --- | 或 | --- | :---: |。
+# 前瞻 (?=.*\|) 要求行里至少有一个竖线：单列表格 "| --- |" 能命中，
+# 而正文里的水平线 "---" 不会被骗成表格
+TABLE_SEP_RE = re.compile(r"^(?=.*\|)\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")
 
 # 单个表格转成字符串后允许的最大字节数，超了就按行降级切分
 MAX_TABLE_BYTES = 60_000
@@ -185,11 +187,11 @@ def _split_large_table(text: str) -> list[str]:
     return groups or [text]
 
 
-def _parent_pieces(blocks: list[Block], parent_size: int) -> list[ParentPiece]:
+def _parent_pieces(blocks: list[Block], parent_size: int, parent_overlap: int = PARENT_OVERLAP) -> list[ParentPiece]:
     """把文本块按 parent_size 切成父块；表格块原样成为独立父块。"""
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=parent_size,
-        chunk_overlap=PARENT_OVERLAP,
+        chunk_overlap=parent_overlap,
         separators=TEXT_SEPARATORS,
         keep_separator=True,
     )
@@ -213,10 +215,11 @@ def chunk_document(
     parent_size: int = 1200,
     child_size: int = 350,
     chunk_overlap: int = 50,
+    parent_overlap: int = PARENT_OVERLAP,
 ) -> list[Chunk]:
     """正文 -> 父块 -> 子块。表格父块和子块都保持整体。"""
     blocks = extract_blocks(text)
-    pieces = _parent_pieces(blocks, parent_size)
+    pieces = _parent_pieces(blocks, parent_size, parent_overlap)
     child_splitter = RecursiveCharacterTextSplitter(
         chunk_size=child_size,
         chunk_overlap=chunk_overlap,

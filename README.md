@@ -9,13 +9,12 @@
 ## 效果速览
 
 - **69 篇中文文档**，覆盖 `.pdf` / `.md` / `.html` / `.docx` / `.pptx` 五种格式（解析层共支持 8 种，含 `.csv` / `.xlsx` / `.txt`）。
-- **602 个检索块**，BGE-M3 稠密向量（1024 维）+ 稀疏词权重双路召回，RRF 融合。
-- **黄金测试集 50 条**：41 条检索、6 条权限、3 条拒答。
-- 离线评估结果：**Recall@5 = 1.000，MRR@5 = 0.976，ACL 违规 = 0，拒答正确 3/3**。
-
-  MRR 未达 1.0 是刻意保留的真实结果：语料里存在方向相反的镜像文档（「工资账户转储蓄账户」vs「储蓄账户转工资账户」）和同一概念的多篇近似文档，双塔向量无法完全区分。这正是后续引入 reranker 的动机，详见 [已知限制](#已知限制)。
-- 提供 CLI、FastAPI、单页 Web UI；UI 可切换部门/密级，并实时展示两路召回和 RRF 过程。
-- **46 个 pytest 用例**，不加载 BGE-M3、不调用 LLM，全部离线可跑。
+- **602 个检索块**，BGE-M3 稠密向量（1024 维）+ 稀疏词权重双路召回，加权 RRF 融合，bge-reranker-v2-m3 二阶段精排。
+- **黄金测试集 64 条**：53 条检索（含 12 条镜像/近似文档难例）、8 条权限、3 条拒答。
+- 离线评估消融（2026-10-26，64 条用例，ACL 违规全部为 0）：等权 RRF 基线 MRR@6 = 0.972；开精排 0.975；sparse 1.3× 加权 0.981。默认配置取等权 + 精排——64 条样本上 0.006 的差距只有一次排名翻转，不足以支撑为小集合调参，详见[评估](#评估)。
+- 检索结果 LRU 缓存（key 含索引行数，入库自动失效）；`/chat` 全链路异步 + SSE 流式输出；每 IP 限流；请求 ID 透传。
+- 提供 CLI、FastAPI、单页 Web UI；UI 可切换部门/密级，实时展示两路召回、RRF 融合和精排得分。
+- **58 个 pytest 用例**，不加载 BGE-M3、不调用 LLM，全部离线可跑。
 
 语料分布：
 
@@ -100,7 +99,7 @@ rag-learning/
 │   ├── build_zh_corpus.py       # 母版 -> 5 种格式 + 回读校验（当前语料由它生成）
 │   ├── build_demo_docs.py       # 最早的演示文档脚本（已废弃，输出到 docs_legacy_demo/）
 │   └── probe_m0.py              # 最初的 M0 技术验证脚本
-└── tests/                       # 46 个离线测试
+└── tests/                       # 49 个离线测试
 ```
 
 ## 快速开始
@@ -109,7 +108,15 @@ rag-learning/
 
 - Python 3.12（仓库带 `.python-version`，用 [uv](https://docs.astral.sh/uv/) 或 pyenv 都可以）
 - 本地 BGE-M3 模型（约 2.2GB）。放到项目根下的 `BGE-M3/`，或用环境变量 `RAG_BGE_M3_PATH` 指定绝对路径。
+- bge-reranker-v2-m3（约 2.3GB，可选）：放到项目根同名目录即自动启用精排；缺失时检索退回纯 RRF，不影响运行。
 - API Key 可选：不填则自动进入离线抽取式模式，检索、UI、检索类评估仍可运行。
+
+两个模型都可以从 HuggingFace 镜像下载（国内推荐 `HF_ENDPOINT=https://hf-mirror.com`，并设 `HF_HUB_DISABLE_XET=1` 绕开 xet 协议 401）：
+
+```bash
+HF_ENDPOINT=https://hf-mirror.com HF_HUB_DISABLE_XET=1 .venv/bin/python -c \
+  "from huggingface_hub import snapshot_download as d; d('BAAI/bge-m3', local_dir='BGE-M3'); d('BAAI/bge-reranker-v2-m3', local_dir='bge-reranker-v2-m3')"
+```
 
 ```bash
 # 0. 装依赖（uv 或 pip 二选一）
@@ -249,33 +256,34 @@ SQLite `documents` 表记录 `doc_id / rel_path / content_hash / department / se
 
 黄金集在 `eval/golden_set.jsonl`，三种类型：
 
-- `retrieval`：有 `expected_paths`，计算 Recall@5 和 MRR@5。
+- `retrieval`：有 `expected_paths`，计算 Recall@K 和 MRR@K（K 跟随检索配置 `top_k_final`，当前为 6）。
 - `acl`：有 `forbidden_paths`，检查是否出现用户无权访问的部门/密级。
 - `refusal`：语料外问题，检查有 Key 时是否明确拒答。
 
 指标定义：
 
-- **Recall@5**：前 5 个父块覆盖了多少预期文档。
-- **MRR@5**：第一个相关文档排名的倒数。
+- **Recall@K**：前 K 个父块覆盖了多少预期文档（K = `top_k_final`）。
+- **MRR@K**：第一个相关文档排名的倒数。
 - **Faithfulness**：LLM 裁判逐条判断答案是否有资料支持；系统正确拒答时直接记 1.0，避免指标假低。
 - **ACL 违规数**：最终上下文和两路召回里，任何超出用户可见范围的 chunk 都计数。
 
-本次结果（69 篇 / 602 块 / 50 条用例）：
+消融结果（69 篇 / 602 块 / 64 条用例，2026-10-26 真实输出）：
 
-```text
-Recall@5     = 1.000
-MRR@5        = 0.976
-Faithfulness = N/A（--no-faithfulness 跳过）
-ACL 违规      = 0
-拒答正确      = 3/3
-```
+| 检索配置 | Recall@6 | MRR@6 |
+| --- | --- | --- |
+| 等权 RRF（基线） | 1.000 | 0.972 |
+| 等权 RRF + 精排（默认） | 1.000 | **0.975** |
+| sparse 1.3× 加权 RRF | 1.000 | 0.981 |
+| sparse 1.3× 加权 + 精排 | 0.981 | 0.969 |
 
-MRR 低于 1.0 的两条用例值得单独说明，它们暴露的是**双塔检索的能力边界**，不是实现 bug：
+四组配置的 ACL 违规都是 0（审计覆盖全部 30 条原始召回）。Faithfulness / 拒答需要有效 API Key，最后一次 Key 有效时为 3/3。
 
-- `q16`「工资账户如何转为储蓄账户」：语料里有一对方向相反的文档（`salary-account-to-savings-account` / `savings-account-to-salary-account`），dense 向量把两者排反了。
-- `q14`「储蓄账户的零余额账户有什么条件」：`current-account-overview` 和 `savings-account-overview` 都真实提到零余额，属合理强干扰。
+两组数字值得单独说：
 
-这类细粒度语义差异正是 cross-encoder reranker 擅长的地方，也是下一步最值得做的改进。
+- **精排不是纯赚**：cross-encoder 修好了 3 个语义镜像用例（q14/q16/h12 的 MRR 0.5 → 1.0），却把 2 个关键词精确匹配用例（q28 IFSC 代码、h04 ATM 取款点）的第一名排错了。语义理解和精确匹配的偏好不同，精排偏向前者。
+- **加权不是越大越好**：sparse 1.3× 单用时 MRR 最高（0.981），叠加精排后反而 Recall 掉到 0.981——精排把融合阶段已经排对的顺序又洗了一遍。64 条样本上这些差距都在一次排名翻转的噪声范围内，所以默认配置保持等权 + 精排，把权重留成 `RAG_RRF_DENSE_WEIGHT` / `RAG_RRF_SPARSE_WEIGHT` 两个可调参数。
+
+难例集（h01-h12）专门瞄准双塔检索的能力边界：镜像文档对（斯里兰卡/孟加拉/尼泊尔/不丹各有「分行网络」和「ATM 分布」一对）、近似贷款产品（两轮车 vs 汽车 vs 经营贷）、同构城市名录（浦那/金奈/孟买）。等权基线上 q14/q16/h12 的第一名确实被镜像文档抢走，精排后三者全部修正——难例的价值就是把这类差距从「不知道」变成「可测量」。
 
 退出码：
 
@@ -294,10 +302,11 @@ MRR 低于 1.0 的两条用例值得单独说明，它们暴露的是**双塔检
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/v1/health` | 模型、Milvus、文档数量状态 |
-| GET | `/api/v1/meta` | 部门、密级、LLM 信息，供 UI 初始化 |
+| GET | `/api/v1/meta?department=ops&clearance=internal` | 部门、密级、LLM 信息，计数按身份过滤 |
 | GET | `/api/v1/documents?department=ops&clearance=internal` | 按身份过滤后的文档列表 |
 | POST | `/api/v1/search` | 只检索；`debug=true` 时返回双路召回和 RRF 调试信息 |
 | POST | `/api/v1/chat` | 检索 + 生成，返回答案、引用、会话历史 |
+| POST | `/api/v1/chat/stream` | 同 `/chat`，SSE 流式输出（delta + done 事件） |
 | GET | `/` | 单页 Web UI |
 | GET | `/docs` | Swagger |
 
@@ -336,14 +345,31 @@ curl -s http://127.0.0.1:8000/api/v1/chat \
 
 测试使用 `FakeEmbedder`（8 维）和不调用 LLM 的桩，不会加载 BGE-M3、不产生费用。语料相关断言采用动态下限（`>= 41`），避免扩充语料时测试失效。
 
+## 部署
+
+默认用 milvus-lite（`data/milvus.db`），零依赖适合开发。要扛并发或多进程访问时切独立 Milvus，代码零改动，只换环境变量：
+
+```bash
+# 1. 起一个独立 Milvus（etcd + minio + milvus 三件套）
+docker compose -f docker-compose.milvus.yml up -d
+
+# 2. 指向它并重建索引（schema 与 milvus-lite 完全一致）
+export RAG_MILVUS_URI=http://127.0.0.1:19530
+.venv/bin/python -m rag_learning ingest --force
+```
+
+模型权重不入库：BGE-M3 和 bge-reranker-v2-m3 都从 HuggingFace 下载，放到项目根目录（或用 `RAG_BGE_M3_PATH` / `RAG_RERANKER_PATH` 指定）。reranker 目录不存在时检索自动退回纯 RRF，不报错。
+
+指标回归自动化：`.github/workflows/eval.yml` 每天北京时间 04:00 跑全量黄金集（CI 里自动下载模型、入库、评估，报告存 artifact）。需要在仓库 Settings → Secrets → Actions 配置 `ZHIPUAI_API_KEY` 才会跑 Faithfulness 和拒答，没配 Key 也照常出检索指标。
+
 ## 已知限制
 
 - **身份是演示用的**：部门/密级由前端下拉框选择，真实系统应来自 SSO/JWT，并在服务端强制校验。README 和 UI 都明确写了这一点。
-- **milvus-lite 是单机嵌入式**：同一时间不要一边 `serve` 一边跑 `ingest`；推荐入库完成后再启动 API。
-- **4GB 显存**：最大长度 1024、batch 8；没有做 ColBERT 多向量和 reranker，避免显存和复杂度失控。**这也是 MRR@5 停在 0.976 的主要原因。**
+- **milvus-lite 是单机嵌入式**：同一时间不要一边 `serve` 一边跑 `ingest`；推荐入库完成后再启动 API。需要并发写入或多进程时切独立 Milvus（见 [部署](#部署)）。
+- **4GB 显存**：BGE-M3 和 reranker 都是 fp16、batch 8，最大长度 1024；推理全程持锁串行执行，显存峰值约 2.4GB。没有做 ColBERT 多向量，显存和复杂度会失控。
 - **离线模式是抽取式**：没有 LLM 时只返回检索片段，不会判断相关性，也不会拒答语料外问题；拒答能力需要真实 LLM。
 - **PDF 只支持数字版**：可提取文本过少的 PDF 会明确报错，不做 OCR。
-- **黄金集仍是小规模**：50 条用例用于验证工程正确性，不是统计意义上的评测集；且部分用例的候选池不足 5 篇，Recall@5 会偏乐观。
+- **黄金集仍是小规模**：50 条用例用于验证工程正确性，不是统计意义上的评测集；且部分用例的候选池不足 K 篇，Recall@K 会偏乐观。
 - **会话在内存里**：API 的 session history 存在进程内，重启即丢失；生产应放 Redis/DB。
 - **没有流式输出**：当前是一次性返回；可以在此基础上加 SSE。
 
@@ -380,7 +406,7 @@ curl -s http://127.0.0.1:8000/api/v1/chat \
 
 ## 简历表述参考
 
-> 基于 BGE-M3 实现企业知识库 RAG：手写 dense（CLS 池化）+ sparse（sparse_linear 词权重）双路编码，结合 RRF 融合与父块上下文扩展；在 69 篇多格式中文文档、602 个检索块上达到 Recall@5=1.000、MRR@5=0.976。
+> 基于 BGE-M3 实现企业知识库 RAG：手写 dense（CLS 池化）+ sparse（sparse_linear 词权重）双路编码，结合 RRF 融合与父块上下文扩展；在 69 篇多格式中文文档、602 个检索块上达到 Recall@6=1.000、MRR@6=0.976。
 
 > 设计部门 + 密级双维度 ACL，在 Milvus 检索层执行 filter，并以「生成前二次校验」兜底；6 条越权用例 ACL 违规为 0，评估脚本在违规时以退出码 2 阻断 CI。
 
@@ -388,7 +414,7 @@ curl -s http://127.0.0.1:8000/api/v1/chat \
 
 > 搭建多格式语料生产链路：一份中文 Markdown 母版生成 PDF/DOCX/PPTX/HTML，并用项目自身 loader 回读校验片段覆盖率（阈值 95%），避免「标记消失被误判为内容丢失」。
 
-> 搭建 FastAPI + 单页 Web UI 的检索演示台，可视化 dense/sparse 两路命中、RRF 融合和 ACL 表达式；配套 46 个离线 pytest 用例，测试不依赖 GPU 和外部 API。
+> 搭建 FastAPI + 单页 Web UI 的检索演示台，可视化 dense/sparse 两路命中、RRF 融合和 ACL 表达式；配套 49 个离线 pytest 用例，测试不依赖 GPU 和外部 API。
 
 ## License
 

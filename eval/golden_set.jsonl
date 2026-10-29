@@ -48,3 +48,17 @@
 {"id": "ref01", "type": "refusal", "question": "今天食堂午饭吃什么？", "department": "general", "clearance": "public", "expected_paths": [], "forbidden_paths": []}
 {"id": "ref02", "type": "refusal", "question": "中兴银行在火星有分行吗？", "department": "general", "clearance": "public", "expected_paths": [], "forbidden_paths": []}
 {"id": "ref03", "type": "refusal", "question": "公司股票代码是多少？", "department": "general", "clearance": "public", "expected_paths": [], "forbidden_paths": []}
+{"id": "h01", "type": "retrieval", "question": "斯里兰卡有哪些中兴银行分行？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/sri-lanka-branch-network.html"]}
+{"id": "h02", "type": "retrieval", "question": "斯里兰卡的 ATM 分布在哪些城市？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/atm-locations-in-sri-lanka.pptx"]}
+{"id": "h03", "type": "retrieval", "question": "孟加拉国的分行网络覆盖哪些城市？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/bangladesh-branch-network.html"]}
+{"id": "h04", "type": "retrieval", "question": "孟加拉国有哪些 ATM 取款点？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/bangladesh-atm-locations.docx"]}
+{"id": "h05", "type": "retrieval", "question": "尼泊尔的分行联系方式是什么？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/branch-network-in-nepal.pptx"]}
+{"id": "h06", "type": "retrieval", "question": "尼泊尔哪里有 ATM？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/nepal-atm-locations.pptx"]}
+{"id": "h07", "type": "retrieval", "question": "不丹有哪些中兴银行分行？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/branch-network-in-bhutan.md"]}
+{"id": "h08", "type": "retrieval", "question": "浦那的分行地址和 IFSC 代码怎么查？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/pune-branch-network.docx"]}
+{"id": "h09", "type": "retrieval", "question": "金奈的分行覆盖哪些区域？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/network-in-chennai.pdf"]}
+{"id": "h10", "type": "retrieval", "question": "孟买有多少家分行？", "department": "ops", "clearance": "public", "expected_paths": ["ops/public/network-in-mumbai.md"]}
+{"id": "h11", "type": "retrieval", "question": "两轮车贷款的年利率最低多少？", "department": "finance", "clearance": "internal", "expected_paths": ["finance/internal/zx-bank-bike-loan.md"]}
+{"id": "h12", "type": "retrieval", "question": "中小企业经营贷款的申请条件是什么？", "department": "finance", "clearance": "internal", "expected_paths": ["finance/internal/zx-bank-business-loans.docx"]}
+{"id": "acl07", "type": "acl", "question": "发现欺诈交易后第一步应该做什么？", "department": "general", "clearance": "public", "expected_paths": [], "forbidden_paths": ["rd/confidential/fraud-transaction.md"]}
+{"id": "acl08", "type": "acl", "question": "员工密码设置有什么要求？", "department": "ops", "clearance": "internal", "expected_paths": [], "forbidden_paths": ["rd/confidential/safety-practices.html", "rd/confidential/safety-features.docx"]}

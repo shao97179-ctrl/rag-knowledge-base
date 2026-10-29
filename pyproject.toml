@@ -30,6 +30,11 @@ dependencies = [
     "typer==0.24.1",
     "rich==14.3.3",
     "httpx==0.28.1",
+]
+
+# 开发期才需要的依赖：CI 用 uv sync（默认装 dev 组），生产部署可 --no-dev 跳过
+[dependency-groups]
+dev = [
     "pytest==9.0.3",
     "reportlab==5.0.1",
 ]

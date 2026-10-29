@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import asdict, dataclass, field
@@ -16,7 +17,7 @@ from ..config import PROJECT_ROOT, get_settings
 from ..loaders.base import doc_id_for
 from ..pipeline import get_pipeline
 from ..schema import UserContext
-from .metrics import judge_faithfulness, mrr_at_k, recall_at_k, find_acl_violations
+from .metrics import judge_faithfulness, mrr_at_k, recall_at_k
 
 logger = logging.getLogger(__name__)
 console = Console(highlight=False)
@@ -106,13 +107,15 @@ def run_evaluation(
         cases = cases[:limit]
 
     results: list[CaseResult] = []
+    # Recall / MRR 的 K 跟随检索配置：top_k_final 是几就评 @几，标签和口径一致
+    metric_k = settings.top_k_final
     for case in cases:
         case_id = case.get("id", "?")
         case_type = case.get("type", "retrieval")
         question = case["question"]
         user = UserContext(case.get("department", "general"), case.get("clearance", "public"))
         try:
-            answer = pipeline.ask(question, user)
+            answer = asyncio.run(pipeline.ask(question, user))
             # 按父块顺序去重后取文档路径，Recall / MRR 以文档为单位计算
             retrieved_paths = list(dict.fromkeys(context.source_path for context in answer.contexts))
             retrieved_ids = [doc_id_for(path) for path in retrieved_paths]
@@ -122,8 +125,8 @@ def run_evaluation(
             mrr = None
             # 只有 retrieval 类型且声明了预期文档才计算检索指标
             if case_type == "retrieval" and expected_ids:
-                recall = recall_at_k(retrieved_ids, expected_ids)
-                mrr = mrr_at_k(retrieved_ids, expected_ids)
+                recall = recall_at_k(retrieved_ids, expected_ids, k=metric_k)
+                mrr = mrr_at_k(retrieved_ids, expected_ids, k=metric_k)
 
             violations = _violation_records(answer, user)
             forbidden = sorted(set(retrieved_paths) & set(case.get("forbidden_paths", [])))
@@ -180,17 +183,17 @@ def run_evaluation(
                 )
             )
 
-    _print_table(results)
-    return _summarize(results, settings, no_faithfulness)
+    _print_table(results, metric_k)
+    return _summarize(results, settings, no_faithfulness, metric_k)
 
 
-def _print_table(results: list[CaseResult]) -> None:
+def _print_table(results: list[CaseResult], metric_k: int) -> None:
     """用 rich 打印逐条明细表，有 ACL 违规的行标红。"""
     table = Table(title="评估明细")
     table.add_column("用例")
     table.add_column("类型")
-    table.add_column("Recall@5", justify="right")
-    table.add_column("MRR@5", justify="right")
+    table.add_column(f"Recall@{metric_k}", justify="right")
+    table.add_column(f"MRR@{metric_k}", justify="right")
     table.add_column("Faith", justify="right")
     table.add_column("ACL", justify="right")
     table.add_column("Top1", overflow="fold")
@@ -209,7 +212,7 @@ def _print_table(results: list[CaseResult]) -> None:
     console.print(table)
 
 
-def _summarize(results: list[CaseResult], settings, no_faithfulness: bool) -> int:
+def _summarize(results: list[CaseResult], settings, no_faithfulness: bool, metric_k: int) -> int:
     """汇总指标、写 JSON 报告，并按阈值返回退出码（0/1/2）。"""
     # None 表示该用例不适用（例如离线模式没有 Faithfulness），从均值里排除
     recalls = [result.recall for result in results if result.recall is not None]
@@ -225,8 +228,8 @@ def _summarize(results: list[CaseResult], settings, no_faithfulness: bool) -> in
     faith_avg = mean(faiths) if faiths else None
 
     console.print()
-    console.print(f"[bold]Recall@5[/bold] = {recall_avg:.3f}" if recall_avg is not None else "Recall@5 = N/A")
-    console.print(f"[bold]MRR@5[/bold]    = {mrr_avg:.3f}" if mrr_avg is not None else "MRR@5 = N/A")
+    console.print(f"[bold]Recall@{metric_k}[/bold] = {recall_avg:.3f}" if recall_avg is not None else f"Recall@{metric_k} = N/A")
+    console.print(f"[bold]MRR@{metric_k}[/bold]    = {mrr_avg:.3f}" if mrr_avg is not None else f"MRR@{metric_k} = N/A")
     if faith_avg is not None:
         console.print(f"[bold]Faithfulness[/bold] = {faith_avg:.3f}（{len(faiths)} 条）")
     elif no_faithfulness:
@@ -249,8 +252,8 @@ def _summarize(results: list[CaseResult], settings, no_faithfulness: bool) -> in
         "provider": settings.llm_provider,
         "model": settings.llm_model,
         "metrics": {
-            "recall_at_5": recall_avg,
-            "mrr_at_5": mrr_avg,
+            f"recall_at_{metric_k}": recall_avg,
+            f"mrr_at_{metric_k}": mrr_avg,
             "faithfulness": faith_avg,
             "acl_violations": acl_total,
             "refusal_ok": refusal_ok,
@@ -270,7 +273,7 @@ def _summarize(results: list[CaseResult], settings, no_faithfulness: bool) -> in
         console.print("[red]存在 ACL 违规，退出码 2[/red]")
         return 2
     if recall_avg is not None and recall_avg < 0.85:
-        console.print("[red]Recall@5 低于 0.85[/red]")
+        console.print(f"[red]Recall@{metric_k} 低于 0.85[/red]")
         return 1
     if faith_avg is not None and faith_avg < 0.9:
         console.print("[red]Faithfulness 低于 0.9[/red]")

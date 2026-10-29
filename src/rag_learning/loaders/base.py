@@ -59,8 +59,14 @@ def doc_id_for(rel_path: str) -> str:
 
 
 def read_text_file(path: Path) -> str:
-    """按 UTF-8-BOM -> GB18030 顺序尝试解码，最后用替换字符兜底。"""
+    """按 UTF-8-BOM -> GB18030 顺序尝试解码，疑似二进制时直接报错。
+
+    GB18030 几乎能解码任意字节，真二进制文件（图片/可执行文件）不会解码失败，
+    只会产出乱码入库。NUL 字节是二进制最可靠的标志，先拦下这一类。
+    """
     raw = path.read_bytes()
+    if b"\x00" in raw:
+        raise ParseError(f"文件包含 NUL 字节，疑似二进制文件：{path.name}")
     for encoding in ("utf-8-sig", "gb18030"):
         try:
             return raw.decode(encoding)

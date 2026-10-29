@@ -23,17 +23,17 @@ def build_user_prompt(query: str, contexts: list[RetrievedChunk], max_chars: int
     for index, context in enumerate(contexts, start=1):
         # 生成阶段用父块，保证上下文完整；子块只在缺父块时兜底
         text = context.parent_text or context.child_text
+        # 「来源：…」前缀行和条目间的空行（2 字符）也算进预算，
+        # 不然实际 prompt 会超 max_chars
+        prefix = f"[{index}] 来源：{context.source_path}（{context.department}/{context.sensitivity}）\n"
         remaining = max_chars - used
         if remaining <= 0:
             break
-        # 最后一条可能只放得下一部分，直接截断比整条丢弃更划算
-        if len(text) > remaining:
-            text = text[:remaining]
-        lines.append(
-            f"[{index}] 来源：{context.source_path}"
-            f"（{context.department}/{context.sensitivity}）\n{text}"
-        )
-        used += len(text)
+        budget = remaining - len(prefix) - 2
+        if len(text) > budget:
+            text = text[: max(0, budget)]
+        lines.append(prefix + text)
+        used += len(prefix) + len(text) + 2
     lines.append("</资料>")
     lines.append(f"<问题>{query}</问题>")
     lines.append("请依据资料回答；资料不足时明确拒答。")

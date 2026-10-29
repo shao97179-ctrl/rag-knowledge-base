@@ -14,6 +14,15 @@ def test_rrf_fuse_known_ranking() -> None:
     assert scores["c"] == scores["d"]
 
 
+def test_rrf_fuse_weights_flip_ranking() -> None:
+    """加权 RRF：给第二路足够大的权重可以让它的第一名反超。"""
+    fused = rrf_fuse([["a", "b"], ["b", "a"]], k=60, weights=[1.0, 3.0])
+    assert fused[0][0] == "b"
+    # 等权时应该回到经典 RRF 的并列，说明权重真的参与了计算
+    equal = rrf_fuse([["a", "b"], ["b", "a"]], k=60, weights=[1.0, 1.0])
+    assert dict(equal)["a"] == dict(equal)["b"]
+
+
 def test_acl_expression() -> None:
     """ACL 表达式要包含用户部门 + general，以及所有不高于自身密级的级别。"""
     assert build_acl_expr(UserContext("ops", "internal")) == (

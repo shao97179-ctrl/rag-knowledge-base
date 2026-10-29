@@ -93,6 +93,84 @@ class LLMClient:
             )
             return None
 
+    async def astream(
+        self,
+        system: str,
+        user: str,
+        model: str | None = None,
+        temperature: float | None = None,
+    ):
+        """流式生成：逐段 yield 文本增量，失败时不产出任何内容。
+
+        调用方需要区分「没产出（调用失败，走降级）」和「产出为空」，
+        所以失败路径不 yield，由外层用降级逻辑兜底。
+        """
+        client = self._client(model, temperature)
+        if client is None:
+            return
+        try:
+            async for chunk in client.astream(
+                [SystemMessage(content=system), HumanMessage(content=user)]
+            ):
+                content = chunk.content
+                if isinstance(content, list):
+                    content = "".join(
+                        part.get("text", "") if isinstance(part, dict) else str(part)
+                        for part in content
+                    )
+                text = str(content)
+                if text:
+                    yield text
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "LLM 流式调用失败 provider=%s model=%s error=%s",
+                self.provider,
+                model or self.settings.llm_model,
+                type(exc).__name__,
+            )
+            return
+
+    async def achat(
+        self,
+        system: str,
+        user: str,
+        model: str | None = None,
+        temperature: float | None = None,
+    ) -> str | None:
+        """chat 的异步版：等待 LLM 期间不占线程，API 的在线路径用它。"""
+        client = self._client(model, temperature)
+        if client is None:
+            return None
+        started = time.perf_counter()
+        try:
+            response = await client.ainvoke(
+                [SystemMessage(content=system), HumanMessage(content=user)]
+            )
+            content = response.content
+            if isinstance(content, list):
+                content = "".join(
+                    part.get("text", "") if isinstance(part, dict) else str(part)
+                    for part in content
+                )
+            text = str(content).strip()
+            logger.info(
+                "LLM 调用成功 provider=%s model=%s elapsed=%.2fs chars=%s",
+                self.provider,
+                model or self.settings.llm_model,
+                time.perf_counter() - started,
+                len(text),
+            )
+            return text or None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "LLM 调用失败 provider=%s model=%s elapsed=%.2fs error=%s",
+                self.provider,
+                model or self.settings.llm_model,
+                time.perf_counter() - started,
+                type(exc).__name__,
+            )
+            return None
+
 
 @lru_cache(maxsize=1)
 def get_llm() -> LLMClient:

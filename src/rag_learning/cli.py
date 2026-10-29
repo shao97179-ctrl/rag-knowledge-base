@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Optional
@@ -154,7 +155,8 @@ def ask(
     pipeline = get_pipeline()
 
     if query:
-        _print_answer(pipeline.ask(query, user, top_k=top_k), debug)
+        result = asyncio.run(pipeline.ask(query, user, top_k=top_k))
+        _print_answer(result, debug)
         return
 
     console.print("交互模式：输入问题，输入 exit 退出。")
@@ -169,7 +171,7 @@ def ask(
         if not question.strip():
             continue
         # 交互模式下每轮都把历史带上，触发多轮查询改写
-        result = pipeline.ask(question, user, history, top_k)
+        result = asyncio.run(pipeline.ask(question, user, history, top_k))
         _print_answer(result, debug)
         history.append({"role": "user", "content": question})
         history.append({"role": "assistant", "content": result.answer})

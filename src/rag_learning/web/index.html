@@ -316,17 +316,24 @@
   }
 
   async function loadMeta() {
-    const meta = await api("/api/v1/meta");
-    state.meta = meta;
-
     const department = $("#department");
     const clearance = $("#clearance");
+    // 文档数 / 索引行数按身份过滤；下拉框当前选择保留，首次加载才落默认身份
+    const params = new URLSearchParams();
+    if (department.value) params.set("department", department.value);
+    if (clearance.value) params.set("clearance", clearance.value);
+    const suffix = params.toString() ? "?" + params.toString() : "";
+    const meta = await api("/api/v1/meta" + suffix);
+    state.meta = meta;
+
+    const keepDept = department.value || "ops";
+    const keepClr = clearance.value || "internal";
     department.innerHTML = "";
     clearance.innerHTML = "";
     meta.departments.forEach((value) => department.appendChild(new Option(value, value)));
     meta.sensitivities.forEach((value) => clearance.appendChild(new Option(value, value)));
-    department.value = "ops";
-    clearance.value = "internal";
+    department.value = keepDept;
+    clearance.value = keepClr;
 
     const llmBadge = $("#llm-badge");
     if (meta.llm.available) {
@@ -424,8 +431,9 @@
     return wrapper;
   }
 
-  function renderAssistant(data) {
-    const { bubbleWrap, wrapper } = addMessage("assistant", data.answer);
+  function renderAssistant(data, existing) {
+    // existing 传入时（流式）复用已经渲染了正文的气泡，只补元信息和引用
+    const { bubbleWrap } = existing || addMessage("assistant", data.answer);
     const meta = el("div", "bubble-meta");
     if (data.offline) meta.appendChild(chip("离线/降级模式"));
     if (data.refused) meta.appendChild(chip("已拒答"));
@@ -549,8 +557,10 @@
     const loading = addLoading();
 
     try {
-      const data = await api("/api/v1/chat", {
+      // SSE 流式：delta 逐段上屏，done 带引用和调试信息
+      const response = await fetch("/api/v1/chat/stream", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query,
           department: $("#department").value,
@@ -559,9 +569,39 @@
           debug: true,
         }),
       });
+      if (!response.ok || !response.body) {
+        let detail = response.statusText;
+        try { detail = (await response.json()).detail || detail; } catch (err) {}
+        throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+      }
+
+      const { wrapper, bubble } = renderStreamingBubble();
       loading.remove();
-      renderAssistant(data);
-      renderDebug(data.debug, data);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let done = null;
+      for (;;) {
+        const { value, done: finished } = await reader.read();
+        if (finished) break;
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split("\n\n");
+        buffer = blocks.pop();
+        for (const block of blocks) {
+          const line = block.split("\n").find((l) => l.startsWith("data: "));
+          if (!line) continue;
+          const event = JSON.parse(line.slice(6));
+          if (event.type === "delta") {
+            bubble.appendChild(document.createTextNode(event.text));
+            $("#messages").scrollTop = $("#messages").scrollHeight;
+          } else {
+            done = event;
+          }
+        }
+      }
+      if (!done) throw new Error("流式响应没有结束事件");
+      renderAssistant(done, wrapper);
+      renderDebug(done.debug, done);
     } catch (error) {
       loading.remove();
       addMessage("assistant", "请求失败：" + error.message, true);
@@ -570,6 +610,20 @@
       $("#send").disabled = false;
       $("#input").focus();
     }
+  }
+
+  function renderStreamingBubble() {
+    // 流式占位气泡：delta 直接往里追加文本节点
+    clearEmptyState();
+    const wrapper = el("div", "msg assistant");
+    wrapper.appendChild(el("div", "avatar", "AI"));
+    const bubbleWrap = el("div", "bubble-wrap");
+    const bubble = el("div", "bubble");
+    bubbleWrap.appendChild(bubble);
+    wrapper.appendChild(bubbleWrap);
+    $("#messages").appendChild(wrapper);
+    $("#messages").scrollTop = $("#messages").scrollHeight;
+    return { wrapper, bubble, bubbleWrap };
   }
 
   $("#composer").addEventListener("submit", (event) => {
@@ -598,8 +652,13 @@
       $("#llm-badge").textContent = "后端连接失败：" + error.message;
       $("#llm-badge").className = "badge offline";
     });
-  $("#department").addEventListener("change", loadDocuments);
-  $("#clearance").addEventListener("change", loadDocuments);
+  // 切换身份时，徽标里的可见文档/块数和文档列表都要跟着刷新
+  function refreshIdentity() {
+    loadMeta().catch(() => {});
+    loadDocuments().catch(() => {});
+  }
+  $("#department").addEventListener("change", refreshIdentity);
+  $("#clearance").addEventListener("change", refreshIdentity);
 </script>
 </body>
 </html>

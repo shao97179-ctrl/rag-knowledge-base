@@ -41,19 +41,36 @@ class Settings(BaseSettings):
     parent_size: int = 1200
     child_size: int = 350
     chunk_overlap: int = 50
+    parent_overlap: int = 100
 
     # ---- 检索参数：两路各召回 30，融合后保留 6 个父块 ----
     top_k_dense: int = 30
     top_k_sparse: int = 30
     top_k_final: int = 6
     rrf_k: int = 60
+    # RRF 各路权重：默认等权（经典 RRF）；专有名词/编号场景可调高 sparse
+    rrf_dense_weight: float = 1.0
+    rrf_sparse_weight: float = 1.0
+    # 检索结果 LRU 缓存条数，0 关闭；key 含索引行数，入库后自动失效
+    retrieval_cache_size: int = 128
     max_context_chars: int = 6000
+
+    # ---- 二阶段精排（cross-encoder）----
+    # 模型目录不存在时自动跳过，检索退回纯 RRF 排序；默认模型是 bge-reranker-v2-m3
+    reranker_path: Path = Path("bge-reranker-v2-m3")
+    rerank_enabled: bool = True
+    rerank_candidates: int = 20
+
+    # ---- API 保护 ----
+    # 每分钟每 IP 的检索/问答请求上限，超出返回 429；0 关闭
+    rate_limit_per_minute: int = 30
 
     # ---- LLM 参数 ----
     llm_provider: str = "zhipu"
     llm_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
     llm_model: str = "glm-4.6v"
-    llm_light_model: str = "glm-4.6v"
+    # 改写专用轻量模型：glm-4.6v-flash 是免费档，改写只需要短文本理解，够用
+    llm_light_model: str = "glm-4.6v-flash"
     llm_temperature: float = 0.1
     llm_timeout: int = 60
 
@@ -108,6 +125,8 @@ class Settings(BaseSettings):
             self.data_dir = (PROJECT_ROOT / self.data_dir).resolve()
         if not self.bge_m3_path.is_absolute():
             self.bge_m3_path = (PROJECT_ROOT / self.bge_m3_path).resolve()
+        if not self.reranker_path.is_absolute():
+            self.reranker_path = (PROJECT_ROOT / self.reranker_path).resolve()
         # milvus_uri 既可能是本地文件路径，也可能是 http(s) 服务地址
         if not (self.milvus_uri.startswith("http://") or self.milvus_uri.startswith("https://")):
             uri_path = Path(self.milvus_uri)
@@ -129,7 +148,7 @@ class Settings(BaseSettings):
             if self.llm_model.startswith("deepseek"):
                 self.llm_model = "glm-4.6v"
             if self.llm_light_model.startswith("deepseek"):
-                self.llm_light_model = "glm-4.6v"
+                self.llm_light_model = "glm-4.6v-flash"
         return self
 
     @property

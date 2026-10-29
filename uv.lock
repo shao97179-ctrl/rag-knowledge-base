@@ -1931,17 +1931,21 @@ dependencies = [
     { name = "pymilvus" },
     { name = "pypdf" },
     { name = "pypdfium2" },
-    { name = "pytest" },
     { name = "python-docx" },
     { name = "python-dotenv" },
     { name = "python-pptx" },
     { name = "pyyaml" },
-    { name = "reportlab" },
     { name = "rich" },
     { name = "torch" },
     { name = "transformers" },
     { name = "typer" },
     { name = "uvicorn" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "reportlab" },
 ]
 
 [package.metadata]
@@ -1962,17 +1966,21 @@ requires-dist = [
     { name = "pymilvus", specifier = "==2.6.12" },
     { name = "pypdf", specifier = "==6.10.2" },
     { name = "pypdfium2", specifier = "==5.8.0" },
-    { name = "pytest", specifier = "==9.0.3" },
     { name = "python-docx", specifier = "==1.2.0" },
     { name = "python-dotenv", specifier = "==1.2.1" },
     { name = "python-pptx", specifier = "==1.0.2" },
     { name = "pyyaml", specifier = "==6.0.3" },
-    { name = "reportlab", specifier = "==5.0.1" },
     { name = "rich", specifier = "==14.3.3" },
     { name = "torch", specifier = "==2.11.0" },
     { name = "transformers", specifier = "==5.3.0" },
     { name = "typer", specifier = "==0.24.1" },
     { name = "uvicorn", specifier = "==0.46.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = "==9.0.3" },
+    { name = "reportlab", specifier = "==5.0.1" },
 ]
 
 [[package]]

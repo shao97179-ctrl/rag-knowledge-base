@@ -1,7 +1,53 @@
+import asyncio
 from types import SimpleNamespace
 
-from rag_learning.generation import build_citations, generate_answer, is_refusal
+from rag_learning.generation import (
+    build_citations,
+    build_user_prompt,
+    generate_answer,
+    is_refusal,
+    stream_answer,
+)
 from rag_learning.schema import RetrievedChunk
+
+
+class StreamingLLM:
+    """可用的 LLM 桩：astream 分两段吐出答案。"""
+
+    available = True
+
+    async def achat(self, *args, **kwargs):
+        """流式路径不会调用 achat，调到即失败。"""
+        raise AssertionError("流式路径不应调用 achat")
+
+    async def astream(self, system, user, model=None, temperature=None):
+        """两段增量，引用编号在第二段。"""
+        yield "住房贷款最长可贷 "
+        yield "30 年[1]。"
+
+
+def test_stream_answer_yields_deltas_then_result() -> None:
+    """流式生成：先 delta 后 done，引用按答案里的编号过滤。"""
+    events = []
+    for event in asyncio.run(_collect(stream_answer(
+        "住房贷款年限",
+        [_context(1), _context(2)],
+        StreamingLLM(),
+        SimpleNamespace(max_context_chars=6000, llm_model="test-model"),
+    ))):
+        events.append(event)
+
+    deltas = [event["text"] for event in events if event["type"] == "delta"]
+    assert deltas == ["住房贷款最长可贷 ", "30 年[1]。"]
+    done = events[-1]["result"]
+    assert done.answer == "住房贷款最长可贷 30 年[1]。"
+    assert [citation.index for citation in done.citations] == [1]
+    assert done.refused is False
+
+
+async def _collect(generator):
+    """把异步生成器收成列表（给 asyncio.run 用）。"""
+    return [event async for event in generator]
 
 
 def _context(index: int) -> RetrievedChunk:
@@ -42,12 +88,12 @@ class OfflineLLM:
 def test_offline_generation_is_extractive() -> None:
     """离线模式返回抽取式答案，并给全部上下文加引用。"""
     contexts = [_context(1), _context(2), _context(3)]
-    result = generate_answer(
+    result = asyncio.run(generate_answer(
         "怎么处理？",
         contexts,
         OfflineLLM(),
         SimpleNamespace(max_context_chars=6000),
-    )
+    ))
     assert result.offline is True
     assert result.refused is False
     assert "[1]" in result.answer
@@ -56,14 +102,23 @@ def test_offline_generation_is_extractive() -> None:
 
 def test_no_context_is_refusal() -> None:
     """检索为空时直接拒答，不调用 LLM。"""
-    result = generate_answer(
+    result = asyncio.run(generate_answer(
         "无关问题",
         [],
         OfflineLLM(),
         SimpleNamespace(max_context_chars=6000),
-    )
+    ))
     assert result.refused is True
     assert is_refusal(result.answer)
+
+
+def test_user_prompt_budget_counts_source_lines() -> None:
+    """「来源：」前缀行算进字符预算，资料部分总长不能超过 max_chars。"""
+    contexts = [_context(1), _context(2)]
+    prompt = build_user_prompt("问题", contexts, max_chars=300)
+    # 只统计 <资料> 标签内的部分
+    body = prompt.split("<资料>\n", 1)[1].rsplit("\n</资料>", 1)[0]
+    assert len(body) <= 300
 
 
 def test_hedged_answer_is_not_refusal() -> None:

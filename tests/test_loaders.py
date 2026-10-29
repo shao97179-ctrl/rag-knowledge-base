@@ -26,6 +26,14 @@ def test_corpus_covers_all_formats() -> None:
     assert formats >= {"markdown", "docx", "pdf", "html", "pptx"}
 
 
+def test_binary_file_raises_parse_error(tmp_path: Path) -> None:
+    """含 NUL 字节的二进制文件直接报错，不能解码成乱码入库。"""
+    binary = tmp_path / "fake.md"
+    binary.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + b"\x00" * 32)
+    with pytest.raises(ParseError, match="二进制"):
+        load_document(binary, tmp_path)
+
+
 def test_tables_are_preserved_as_markdown() -> None:
     """含地址表格的分行网络文档，解析后必须保留表格字段。
 

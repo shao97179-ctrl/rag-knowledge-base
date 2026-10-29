@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import threading
 import time
+import uuid
+from collections import defaultdict, deque
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .config import get_settings
 from .pipeline import RAGPipeline, get_pipeline
+from .retrieval.filters import build_acl_expr
 from .schema import DEPARTMENTS, SENSITIVITY_LEVELS, UserContext
 
 logger = logging.getLogger(__name__)
@@ -45,6 +50,44 @@ _SESSION_TURNS = 10
 # 会话总量和闲置过期都设上限，长驻进程的内存不会随访问量无限涨
 _SESSION_LIMIT = 1000
 _SESSION_TTL = 24 * 60 * 60
+
+# 每 IP 的滑动窗口限流桶：时间戳队列，超出窗口的弹出
+_RATE_BUCKETS: dict[str, deque[float]] = defaultdict(deque)
+_RATE_LOCK = threading.Lock()
+
+
+def _rate_limit(request: Request) -> None:
+    """检索/问答接口的每 IP 限流，超出返回 429；上限为 0 时关闭。"""
+    limit = get_settings().rate_limit_per_minute
+    if limit <= 0:
+        return
+    client = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    with _RATE_LOCK:
+        bucket = _RATE_BUCKETS[client]
+        while bucket and now - bucket[0] > 60:
+            bucket.popleft()
+        if len(bucket) >= limit:
+            raise HTTPException(status_code=429, detail=f"请求过于频繁：每分钟限 {limit} 次")
+        bucket.append(now)
+
+
+@app.middleware("http")
+async def request_context(request: Request, call_next):
+    """给每个请求分配短 ID：透传上游的 x-request-id，否则新生成。"""
+    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
+    started = time.perf_counter()
+    response = await call_next(request)
+    response.headers["x-request-id"] = request_id
+    logger.info(
+        "http %s %s -> %s %.0fms id=%s",
+        request.method,
+        request.url.path,
+        response.status_code,
+        (time.perf_counter() - started) * 1000,
+        request_id,
+    )
+    return response
 
 
 class SearchRequest(BaseModel):
@@ -150,8 +193,19 @@ def health(pipeline: RAGPipeline = Depends(get_pipeline_dep)) -> dict:
 
 
 @app.get("/api/v1/meta")
-def meta(pipeline: RAGPipeline = Depends(get_pipeline_dep)) -> dict:
-    """前端初始化所需的枚举和状态（部门、密级、LLM、索引）。"""
+def meta(
+    department: str = "general",
+    clearance: str = "public",
+    pipeline: RAGPipeline = Depends(get_pipeline_dep),
+) -> dict:
+    """前端初始化所需的枚举和状态；文档数和索引行数按身份过滤，不泄露全局规模。"""
+    user = _user(department, clearance)
+    expression = build_acl_expr(user)
+    visible_documents = sum(
+        1
+        for record in pipeline.registry.list_all()
+        if user.can_access(record.department, record.sensitivity)
+    )
     return {
         "departments": list(DEPARTMENTS),
         "sensitivities": list(SENSITIVITY_LEVELS),
@@ -160,8 +214,8 @@ def meta(pipeline: RAGPipeline = Depends(get_pipeline_dep)) -> dict:
             "model": pipeline.settings.llm_model,
             "available": pipeline.llm.available,
         },
-        "milvus": pipeline.store.stats(),
-        "documents": len(pipeline.registry.list_all()),
+        "milvus": pipeline.store.stats(expression),
+        "documents": visible_documents,
     }
 
 
@@ -181,29 +235,8 @@ def documents(
     return {"documents": visible}
 
 
-@app.post("/api/v1/search")
-def search(req: SearchRequest, pipeline: RAGPipeline = Depends(get_pipeline_dep)) -> dict:
-    """只检索不生成；debug=true 时才返回双路召回调试信息，口径与 /chat 一致。"""
-    user = _user(req.department, req.clearance)
-    result = pipeline.search(req.query, user, req.top_k)
-    return {
-        "query": req.query,
-        "contexts": [_chunk_dict(chunk) for chunk in result.contexts],
-        # debug 默认不回传，避免暴露内部检索细节
-        "debug": result.debug if req.debug else {},
-    }
-
-
-@app.post("/api/v1/chat")
-def chat(req: ChatRequest, pipeline: RAGPipeline = Depends(get_pipeline_dep)) -> dict:
-    """检索 + 生成，可选多轮会话和调试信息。"""
-    user = _user(req.department, req.clearance)
-    key = _session_key(req.session_id, user) if req.session_id else None
-    history = _get_history(key) if key else None
-    result = pipeline.ask(req.query, user, history, req.top_k)
-    if key:
-        # 只记录本轮原始问题和最终答案，历史里不存改写后的问题
-        _remember(key, req.query, result.answer)
+def _answer_payload(result, debug_on: bool) -> dict:
+    """/chat 和 /chat/stream 共用的完整答案响应结构。"""
     return {
         "answer": result.answer,
         "refused": result.refused,
@@ -212,5 +245,71 @@ def chat(req: ChatRequest, pipeline: RAGPipeline = Depends(get_pipeline_dep)) ->
         "citations": [asdict(citation) for citation in result.citations],
         "contexts": [_chunk_dict(chunk) for chunk in result.contexts],
         # debug 默认不回传，避免暴露内部检索细节
+        "debug": result.debug if debug_on else {},
+    }
+
+
+@app.post("/api/v1/search")
+def search(
+    req: SearchRequest,
+    pipeline: RAGPipeline = Depends(get_pipeline_dep),
+    _: None = Depends(_rate_limit),
+) -> dict:
+    """只检索不生成；debug=true 时才返回双路召回调试信息，口径与 /chat 一致。"""
+    user = _user(req.department, req.clearance)
+    result = pipeline.search(req.query, user, req.top_k)
+    return {
+        "query": req.query,
+        "contexts": [_chunk_dict(chunk) for chunk in result.contexts],
         "debug": result.debug if req.debug else {},
     }
+
+
+@app.post("/api/v1/chat")
+async def chat(
+    req: ChatRequest,
+    pipeline: RAGPipeline = Depends(get_pipeline_dep),
+    _: None = Depends(_rate_limit),
+) -> dict:
+    """检索 + 生成，可选多轮会话和调试信息。
+
+    端点是 async 的：等待 LLM 返回期间不占线程池，并发能力不再被
+    同步阻塞的 60 秒超时拖垮。
+    """
+    user = _user(req.department, req.clearance)
+    key = _session_key(req.session_id, user) if req.session_id else None
+    history = _get_history(key) if key else None
+    result = await pipeline.ask(req.query, user, history, req.top_k)
+    if key:
+        # 只记录本轮原始问题和最终答案，历史里不存改写后的问题
+        _remember(key, req.query, result.answer)
+    return _answer_payload(result, req.debug)
+
+
+@app.post("/api/v1/chat/stream")
+async def chat_stream(
+    req: ChatRequest,
+    pipeline: RAGPipeline = Depends(get_pipeline_dep),
+    _: None = Depends(_rate_limit),
+) -> StreamingResponse:
+    """SSE 流式问答：delta 事件逐段输出答案，done 事件带引用与调试信息。"""
+    user = _user(req.department, req.clearance)
+    key = _session_key(req.session_id, user) if req.session_id else None
+    history = _get_history(key) if key else None
+
+    async def events():
+        async for event in pipeline.ask_stream(req.query, user, history, req.top_k):
+            if event["type"] == "delta":
+                data = {"type": "delta", "text": event["text"]}
+            else:
+                result = event["result"]
+                if key:
+                    _remember(key, req.query, result.answer)
+                data = {"type": "done", **_answer_payload(result, req.debug)}
+            yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache"},
+    )

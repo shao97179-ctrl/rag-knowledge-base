@@ -230,6 +230,7 @@ class Ingestor:
             parent_size=self.settings.parent_size,
             child_size=self.settings.child_size,
             chunk_overlap=self.settings.chunk_overlap,
+            parent_overlap=self.settings.parent_overlap,
         )
         if not chunks:
             # 解析出空文本：清掉旧索引，但保留注册表记录（status=empty）

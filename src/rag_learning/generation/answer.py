@@ -98,7 +98,7 @@ def _extractive_answer(contexts: list[RetrievedChunk], reason: str) -> str:
     return "\n\n".join(parts)
 
 
-def generate_answer(
+async def generate_answer(
     query: str,
     contexts: list[RetrievedChunk],
     llm: LLMClient,
@@ -120,7 +120,7 @@ def generate_answer(
     offline = not llm.available
     answer: str | None = None
     if llm.available:
-        answer = llm.chat(
+        answer = await llm.achat(
             SYSTEM_PROMPT,
             build_user_prompt(query, contexts, settings.max_context_chars),
             model=settings.llm_model,
@@ -146,3 +146,62 @@ def generate_answer(
         offline=offline,
         debug={"reason": "refusal" if refused else "answered"},
     )
+
+
+async def stream_answer(
+    query: str,
+    contexts: list[RetrievedChunk],
+    llm: LLMClient,
+    settings: Any,
+):
+    """generate_answer 的流式版：逐段 yield delta，最后一个事件带完整结果。
+
+    事件格式：{"type": "delta", "text": ...} 若干个，然后
+    {"type": "done", "result": AnswerResult}。离线/失败时降级答案作为
+    单个 delta 一次性发出。
+    """
+    if not contexts:
+        result = AnswerResult(
+            answer="根据现有资料无法回答。",
+            citations=[],
+            contexts=[],
+            rewritten_query=query,
+            refused=True,
+            offline=not llm.available,
+            debug={"reason": "no_context"},
+        )
+        yield {"type": "done", "result": result}
+        return
+
+    offline = not llm.available
+    parts: list[str] = []
+    if llm.available:
+        prompt = build_user_prompt(query, contexts, settings.max_context_chars)
+        async for delta in llm.astream(SYSTEM_PROMPT, prompt, model=settings.llm_model):
+            parts.append(delta)
+            yield {"type": "delta", "text": delta}
+
+    answer = "".join(parts).strip() if parts else None
+    if answer is None:
+        # LLM 不可用或流式调用中途失败：降级为抽取式，整段一次性发出
+        reason = "离线模式" if offline else "LLM 调用失败，已降级"
+        if not offline:
+            logger.warning("流式生成失败，降级为抽取式回答")
+        answer = _extractive_answer(contexts, reason)
+        offline = True
+        yield {"type": "delta", "text": answer}
+
+    refused = is_refusal(answer)
+    citations = [] if refused else build_citations(contexts, answer)
+    yield {
+        "type": "done",
+        "result": AnswerResult(
+            answer=answer,
+            citations=citations,
+            contexts=contexts,
+            rewritten_query=query,
+            refused=refused,
+            offline=offline,
+            debug={"reason": "refusal" if refused else "answered"},
+        ),
+    }

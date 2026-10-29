@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from functools import lru_cache
 
 from .config import Settings, get_settings
 from .embedder import get_embedder
-from .generation import generate_answer
+from .generation import generate_answer, stream_answer
 from .llm import get_llm
 from .registry import Registry
+from .reranker import get_reranker
 from .retrieval import HybridRetriever, QueryRewriter, RetrievalResult
 from .schema import AnswerResult, UserContext
 from .vector_store import MilvusStore
@@ -32,27 +34,53 @@ class RAGPipeline:
         self.registry = Registry(self.settings.registry_path)
         self.llm = get_llm()
         self.rewriter = QueryRewriter(self.llm, self.settings.llm_light_model)
-        self.retriever = HybridRetriever(self.settings, self.embedder, self.store)
+        # reranker 是可选组件：模型目录不存在时 available=False，检索自动退回纯 RRF
+        self.reranker = get_reranker(self.settings)
+        self.retriever = HybridRetriever(self.settings, self.embedder, self.store, self.reranker)
 
     def search(self, query: str, user: UserContext, top_k: int | None = None) -> RetrievalResult:
         """只检索不生成，供 UI 的调试面板和 /search 接口使用。"""
         return self.retriever.search(query, user, top_k)
 
-    def ask(
+    async def ask(
         self,
         query: str,
         user: UserContext,
         history: list[dict] | None = None,
         top_k: int | None = None,
     ) -> AnswerResult:
-        """完整问答：多轮改写 -> 混合检索 -> 生成答案。"""
-        rewritten = self.rewriter.rewrite(query, history)
-        retrieved = self.retriever.search(rewritten, user, top_k)
-        result = generate_answer(rewritten, retrieved.contexts, self.llm, self.settings)
+        """完整问答：多轮改写 -> 混合检索 -> 生成答案。
+
+        LLM 调用走异步（等待期间不占线程）；检索涉及 GPU 前向和 Milvus
+        同步客户端，用 to_thread 下放线程池，避免阻塞事件循环。
+        """
+        rewritten = await self.rewriter.rewrite(query, history)
+        retrieved = await asyncio.to_thread(self.retriever.search, rewritten, user, top_k)
+        result = await generate_answer(rewritten, retrieved.contexts, self.llm, self.settings)
         # 改写后的问题可能和原始问题不同，回填给调用方展示
         result.rewritten_query = rewritten
         result.debug.update({"retrieval": retrieved.debug})
         return result
+
+    async def ask_stream(
+        self,
+        query: str,
+        user: UserContext,
+        history: list[dict] | None = None,
+        top_k: int | None = None,
+    ):
+        """ask 的流式版：yield delta 事件，最后一个 done 事件带完整 AnswerResult。"""
+        rewritten = await self.rewriter.rewrite(query, history)
+        retrieved = await asyncio.to_thread(self.retriever.search, rewritten, user, top_k)
+        result = None
+        async for event in stream_answer(rewritten, retrieved.contexts, self.llm, self.settings):
+            if event["type"] == "done":
+                result = event["result"]
+                result.rewritten_query = rewritten
+                result.debug.update({"retrieval": retrieved.debug})
+            else:
+                yield event
+        yield {"type": "done", "result": result}
 
     def health(self) -> dict:
         """汇总 LLM、编码器、向量库和文档数，供 /health 和 stats 命令使用。"""

@@ -57,6 +57,7 @@ def _setup(tmp_path: Path):
         parent_size=300,
         child_size=80,
         chunk_overlap=20,
+        parent_overlap=50,
     )
     store = MilvusStore(uri=str(tmp_path / "milvus.db"), collection="test_chunks", dimension=DIM)
     registry = Registry(tmp_path / "registry.sqlite")

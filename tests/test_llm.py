@@ -1,5 +1,6 @@
 """LLMClient 离线测试：不发起真实请求，只验证 client 的构造和缓存逻辑。"""
 
+import asyncio
 from types import SimpleNamespace
 
 from rag_learning.llm import LLMClient
@@ -39,3 +40,5 @@ def test_offline_client_is_none() -> None:
     llm = LLMClient(_settings(llm_provider="offline", api_key=None, llm_available=False))
     assert llm._client() is None
     assert llm._client(temperature=0.0) is None
+    # 异步路径同样直接返回 None，不发起调用
+    assert asyncio.run(llm.achat("sys", "user")) is None

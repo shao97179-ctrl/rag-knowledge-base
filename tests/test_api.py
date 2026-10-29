@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import json
 
 from fastapi.testclient import TestClient
 
@@ -70,9 +71,10 @@ class FakeRegistry:
 class FakeStore:
     """向量库桩：只提供 stats()。"""
 
-    def stats(self):
-        """返回假的集合状态。"""
-        return {"rows": 1, "collection": "test", "exists": True}
+    def stats(self, expression=None):
+        """返回假的集合状态；带 expression 时模拟按 ACL 过滤后的行数。"""
+        rows = 2 if expression and "rd" in expression else 1
+        return {"rows": rows, "collection": "test", "exists": True}
 
 
 class FakePipeline:
@@ -94,7 +96,7 @@ class FakePipeline:
             debug={"filter_expr": "department in [\"ops\"]", "dense_count": 1},
         )
 
-    def ask(self, query, user, history=None, top_k=None):
+    async def ask(self, query, user, history=None, top_k=None):
         """模拟问答：返回带引用的固定答案。"""
         return AnswerResult(
             answer="UPI 单笔限额为 10 万卢比 [1]。",
@@ -117,6 +119,13 @@ class FakePipeline:
             debug={"retrieval": {"dense_count": 1, "sparse_count": 1}},
         )
 
+    async def ask_stream(self, query, user, history=None, top_k=None):
+        """模拟流式问答：两个 delta 之后跟完整结果。"""
+        yield {"type": "delta", "text": "UPI 单笔限额为 "}
+        yield {"type": "delta", "text": "10 万卢比 [1]。"}
+        result = await self.ask(query, user, history, top_k)
+        yield {"type": "done", "result": result}
+
 
 def _client() -> TestClient:
     """用 dependency_overrides 把真实 pipeline 换成桩。"""
@@ -131,11 +140,19 @@ def teardown_function() -> None:
 
 
 def test_meta_and_documents() -> None:
-    """/meta 返回枚举；/documents 默认身份（general/public）只能看到公开文档。"""
+    """/meta 返回枚举且计数按身份过滤；/documents 默认身份只能看到公开文档。"""
     client = _client()
     meta = client.get("/api/v1/meta").json()
     assert "ops" in meta["departments"]
     assert "confidential" in meta["sensitivities"]
+    # 默认 general/public：两条记录（ops/internal、rd/confidential）都不可见
+    assert meta["documents"] == 0
+    assert meta["milvus"]["rows"] == 1
+
+    # rd/confidential 身份：文档数和过滤后的行数都该跟着变
+    rd_meta = client.get("/api/v1/meta", params={"department": "rd", "clearance": "confidential"}).json()
+    assert rd_meta["documents"] == 1
+    assert rd_meta["milvus"]["rows"] == 2
 
     documents = client.get("/api/v1/documents").json()
     assert documents["documents"] == []
@@ -223,6 +240,49 @@ def test_search_and_chat() -> None:
     assert "10 万卢比" in body["answer"]
     assert body["citations"][0]["source_path"].startswith("ops/")
     assert body["debug"]["retrieval"]["dense_count"] == 1
+
+
+def test_chat_stream_sse() -> None:
+    """/chat/stream 返回 SSE：delta 事件逐段，done 事件带引用。"""
+    client = _client()
+    response = client.post(
+        "/api/v1/chat/stream",
+        json={"query": "UPI 限额", "department": "ops", "clearance": "internal"},
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+
+    events = [
+        json.loads(line[len("data: "):])
+        for line in response.text.split("\n\n")
+        if line.startswith("data: ")
+    ]
+    deltas = [event["text"] for event in events if event["type"] == "delta"]
+    assert deltas == ["UPI 单笔限额为 ", "10 万卢比 [1]。"]
+    done = events[-1]
+    assert done["type"] == "done"
+    assert done["citations"][0]["source_path"].startswith("ops/")
+    assert "10 万卢比" in done["answer"]
+
+
+def test_rate_limit_returns_429(monkeypatch) -> None:
+    """每 IP 每分钟超出限额后返回 429。"""
+    monkeypatch.setattr(api, "get_settings", lambda: SimpleNamespace(rate_limit_per_minute=2))
+    api._RATE_BUCKETS.clear()
+    client = _client()
+    payload = {"query": "UPI", "department": "ops", "clearance": "internal"}
+    assert client.post("/api/v1/search", json=payload).status_code == 200
+    assert client.post("/api/v1/search", json=payload).status_code == 200
+    assert client.post("/api/v1/search", json=payload).status_code == 429
+
+
+def test_request_id_header() -> None:
+    """每个响应都带 x-request-id，透传上游传入的值。"""
+    client = _client()
+    auto = client.get("/api/v1/meta")
+    assert auto.headers.get("x-request-id")
+    passed = client.get("/api/v1/meta", headers={"x-request-id": "my-trace-42"})
+    assert passed.headers["x-request-id"] == "my-trace-42"
 
 
 def test_invalid_department_returns_400() -> None:

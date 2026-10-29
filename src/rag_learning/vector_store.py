@@ -184,26 +184,26 @@ class MilvusStore:
         """稀疏向量检索：关键词权重匹配，适合专有名词和编号。"""
         return self._search(vector, "sparse", expression, limit)
 
-    def count(self) -> int:
-        """集合总行数；集合不存在时返回 0。"""
+    def count(self, expression: str | None = None) -> int:
+        """集合总行数；传入 expression 时统计满足条件的行数（如按 ACL 过滤）。"""
         if not self.client.has_collection(self.collection):
             return 0
         self._ensure_loaded()
         result = self.client.query(
             collection_name=self.collection,
-            filter="pk != ''",
+            filter=expression or "pk != ''",
             output_fields=["count(*)"],
         )
         if not result:
             return 0
         return int(result[0].get("count(*)", 0))
 
-    def stats(self) -> dict:
-        """健康检查 / 状态展示用的集合摘要。"""
+    def stats(self, expression: str | None = None) -> dict:
+        """健康检查 / 状态展示用的集合摘要，expression 语义同 count。"""
         return {
             "uri": self.uri,
             "collection": self.collection,
             "exists": self.client.has_collection(self.collection),
-            "rows": self.count(),
+            "rows": self.count(expression),
             "dimension": self.dimension,
         }

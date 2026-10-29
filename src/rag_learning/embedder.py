@@ -57,6 +57,9 @@ class BgeM3Embedder:
         self._loaded = False
         # 双重检查锁：多线程首次 encode 时只加载一次模型
         self._lock = threading.Lock()
+        # 推理锁：并发请求的 GPU 前向串行执行。异步化之后检索在线程池里跑，
+        # 不加锁会同时打多个前向：显存按并发数叠加，OOM 降级还会互相踩状态
+        self._infer_lock = threading.Lock()
         # 已经打过的告警 key，避免显存不足时刷屏
         self._warned: set[str] = set()
 
@@ -223,7 +226,9 @@ class BgeM3Embedder:
         sparse_vectors: list[dict[int, float]] = []
         for start in range(0, len(normalized), self.batch_size):
             batch = normalized[start:start + self.batch_size]
-            dense, sparse = self._encode_with_fallback(batch, is_query)
+            # 前向（含 OOM 降级重试）全程持锁，多线程请求在 GPU 门口排队
+            with self._infer_lock:
+                dense, sparse = self._encode_with_fallback(batch, is_query)
             dense_vectors.extend(dense)
             sparse_vectors.extend(sparse)
         return dense_vectors, sparse_vectors

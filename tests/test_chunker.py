@@ -1,4 +1,4 @@
-from rag_learning.chunker import MAX_TABLE_BYTES, chunk_document, compute_pk
+from rag_learning.chunker import MAX_TABLE_BYTES, TABLE_SEP_RE, chunk_document, compute_pk
 
 
 def _make_table(rows: int, cell: str = "内容") -> str:
@@ -6,6 +6,18 @@ def _make_table(rows: int, cell: str = "内容") -> str:
     header = "| 职级 | 下限 | 上限 | 说明 |\n| --- | --- | --- | --- |"
     body = "\n".join(f"| P{i} | {1000 + i} | {2000 + i} | {cell * 8} |" for i in range(rows))
     return f"{header}\n{body}"
+
+
+def test_single_column_table_is_atomic() -> None:
+    """单列表格也要识别成表格原子块；水平线 --- 不能误判成表格分隔行。"""
+    single = "# 一览\n\n| 名称 |\n| --- |\n| 甲 |\n| 乙 |\n| 丙 |"
+    chunks = chunk_document(single, "doc-single-col")
+    assert len(chunks) == 1
+    assert chunks[0].parent_text == "| 名称 |\n| --- |\n| 甲 |\n| 乙 |\n| 丙 |"
+
+    # 纯水平线不是分隔行
+    assert TABLE_SEP_RE.match("---") is None
+    assert TABLE_SEP_RE.match("| --- |") is not None
 
 
 def test_large_table_stays_atomic() -> None:
